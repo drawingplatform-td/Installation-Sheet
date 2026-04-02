@@ -107,6 +107,7 @@
     const clearSelectedImageBtn = document.getElementById("clearSelectedImageBtn");
 
     let localPreviewUrl = "";
+    let originalSelectedFile = null;
     const MAX_IMAGE_DIMENSION = 1024;
     const TARGET_UPLOAD_SIZE_BYTES = 500 * 1024;
     const JPEG_QUALITY_STEPS = [0.82, 0.74, 0.68, 0.62, 0.56, 0.5];
@@ -160,6 +161,28 @@
         return (bytes / 1024).toFixed(1) + " KB";
       }
       return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+
+    function getImageDimensionsFromFile(file) {
+      return new Promise(function(resolve, reject) {
+        const previewUrl = URL.createObjectURL(file);
+        const image = new Image();
+
+        image.onload = function() {
+          URL.revokeObjectURL(previewUrl);
+          resolve({
+            width: image.naturalWidth || image.width || 0,
+            height: image.naturalHeight || image.height || 0
+          });
+        };
+
+        image.onerror = function() {
+          URL.revokeObjectURL(previewUrl);
+          reject(new Error("อ่านขนาดรูปไม่สำเร็จ"));
+        };
+
+        image.src = previewUrl;
+      });
     }
 
     function readFileAsDataUrl(file) {
@@ -222,6 +245,12 @@
         .replace(/[^\w.\-() ]/g, "_") + ".jpg";
     }
 
+    function makePngUploadFileName(file) {
+      return String(file.name || "image")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^\w.\-() ]/g, "_") + ".png";
+    }
+
     function replaceSelectedFile(file) {
       if (typeof DataTransfer === "undefined") {
         throw new Error("เบราว์เซอร์นี้ไม่รองรับการเตรียมไฟล์อัปโหลดแบบใหม่");
@@ -231,11 +260,40 @@
       fileInput.files = transfer.files;
     }
 
+    function canvasHasTransparency(canvas) {
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        return false;
+      }
+
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 3; i < imageData.length; i += 4) {
+        if (imageData[i] < 255) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
     async function prepareUploadFile(file) {
+      if (file.type === "image/gif") {
+        const gifDimensions = await getImageDimensionsFromFile(file);
+        return {
+          file: file,
+          originalSize: file.size || 0,
+          compressedSize: file.size || 0,
+          width: gifDimensions.width || 0,
+          height: gifDimensions.height || 0,
+          note: "ระบบใช้ไฟล์ GIF ต้นฉบับเพื่อรักษาภาพเคลื่อนไหว"
+        };
+      }
+
       const originalDataUrl = await readFileAsDataUrl(file);
       const image = await loadImageElement(originalDataUrl);
       let targetWidth = image.naturalWidth || image.width || 1;
       let targetHeight = image.naturalHeight || image.height || 1;
+      const mayContainTransparency = file.type === "image/png" || file.type === "image/webp";
 
       if (targetWidth > MAX_IMAGE_DIMENSION || targetHeight > MAX_IMAGE_DIMENSION) {
         const scale = Math.min(MAX_IMAGE_DIMENSION / targetWidth, MAX_IMAGE_DIMENSION / targetHeight);
@@ -251,6 +309,31 @@
 
       while (true) {
         const canvas = drawResizedImageToCanvas(image, currentWidth, currentHeight);
+        const hasTransparency = mayContainTransparency && canvasHasTransparency(canvas);
+
+        if (hasTransparency) {
+          blob = await canvasToBlob(canvas, "image/png");
+
+          if (blob.size <= TARGET_UPLOAD_SIZE_BYTES || (currentWidth <= 720 && currentHeight <= 720)) {
+            const pngFile = new File([blob], makePngUploadFileName(file), {
+              type: "image/png",
+              lastModified: Date.now()
+            });
+
+            return {
+              file: pngFile,
+              originalSize: file.size || 0,
+              compressedSize: blob.size || 0,
+              width: currentWidth,
+              height: currentHeight,
+              note: "ระบบเก็บ transparency ไว้โดยบันทึกเป็น PNG"
+            };
+          }
+
+          currentWidth = Math.max(1, Math.round(currentWidth * 0.88));
+          currentHeight = Math.max(1, Math.round(currentHeight * 0.88));
+          continue;
+        }
 
         for (let i = 0; i < JPEG_QUALITY_STEPS.length; i += 1) {
           blob = await canvasToBlob(canvas, outputType, JPEG_QUALITY_STEPS[i]);
@@ -281,7 +364,8 @@
         originalSize: file.size || 0,
         compressedSize: blob.size || 0,
         width: currentWidth,
-        height: currentHeight
+        height: currentHeight,
+        note: "ระบบย่อและบีบอัดรูปเป็น JPEG ก่อนอัปโหลด"
       };
     }
 
@@ -292,6 +376,16 @@
         .replace(/"/g, "&quot;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
+    }
+
+    function escapeJsString(value) {
+      return String(value || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
     }
 
     function getDriveFileId(url) {
@@ -367,6 +461,7 @@
 
     function clearSelectedImage() {
       fileInput.value = "";
+      originalSelectedFile = null;
       releaseLocalPreview();
       updateFileHint();
 
@@ -396,6 +491,7 @@
         return;
       }
 
+      originalSelectedFile = file;
       releaseLocalPreview();
       localPreviewUrl = URL.createObjectURL(file);
       previewText.classList.add("hidden");
@@ -446,7 +542,7 @@
           <td class="p-4 text-slate-500 text-xs">${remarkText}</td>
           <td class="p-4 text-slate-400 text-[10px]">${dateStr}</td>
           <td class="p-4 text-center">
-            <button onclick="editMode('${escapeHtml(row[0])}','${escapeHtml(row[2])}','${escapeHtml(row[3])}','${escapeHtml(row[4])}','${escapeHtml(row[5])}')"
+            <button onclick="editMode('${escapeJsString(row[0])}','${escapeJsString(row[2])}','${escapeJsString(row[3])}','${escapeJsString(row[4])}','${escapeJsString(row[5])}')"
                     class="bg-amber-100 text-amber-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-amber-200 transition">
               แก้ไข
             </button>
@@ -479,7 +575,7 @@
           setSubmitBusy("กำลังย่อรูป...");
           showStatus("info", "กำลังย่อและบีบอัดรูปก่อนอัปโหลด");
 
-          const preparedFile = await prepareUploadFile(file);
+          const preparedFile = await prepareUploadFile(originalSelectedFile || file);
           replaceSelectedFile(preparedFile.file);
           updateFileHint();
 
@@ -488,7 +584,8 @@
             "ตัวอย่างรูปก่อนอัปโหลด",
             preparedFile.width + "x" + preparedFile.height + " • " +
               formatFileSize(preparedFile.originalSize) + " -> " +
-              formatFileSize(preparedFile.compressedSize),
+              formatFileSize(preparedFile.compressedSize) +
+              (preparedFile.note ? " • " + preparedFile.note : ""),
             true
           );
 
@@ -526,6 +623,8 @@
     }
 
     function editMode(id, machine, url, issue, remark) {
+      fileInput.value = "";
+      originalSelectedFile = null;
       releaseLocalPreview();
       rowIdInput.value = id;
       document.getElementById("machine").value = machine;
@@ -557,6 +656,7 @@
 
     function resetForm(preserveStatus) {
       form.reset();
+      originalSelectedFile = null;
       releaseLocalPreview();
       rowIdInput.value = "";
       existingUrlInput.value = "";
