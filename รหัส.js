@@ -47,15 +47,27 @@ function createDriveFile_(blob) {
   return DriveApp.createFile(blob);
 }
 
-function uploadImageAndGetUrl_(fileData) {
-  if (!fileData || !fileData.data || !fileData.type || !fileData.name) {
+function extractUploadBlob_(obj) {
+  if (obj && obj.imageFile && typeof obj.imageFile.getBytes === "function") {
+    return obj.imageFile;
+  }
+
+  if (obj && obj.fileData && obj.fileData.data && obj.fileData.type && obj.fileData.name) {
+    const bytes = Utilities.base64Decode(obj.fileData.data);
+    return Utilities.newBlob(bytes, obj.fileData.type, obj.fileData.name);
+  }
+
+  return null;
+}
+
+function uploadImageAndGetUrl_(uploadBlob) {
+  if (!uploadBlob || typeof uploadBlob.getBytes !== "function") {
     throw new Error("Invalid file payload.");
   }
 
-  const bytes = Utilities.base64Decode(fileData.data);
-  const safeName = String(fileData.name).replace(/[^\w.\-() ]/g, "_");
+  const safeName = String(uploadBlob.getName() || "image.jpg").replace(/[^\w.\-() ]/g, "_");
   const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd-HHmmss");
-  const blob = Utilities.newBlob(bytes, fileData.type, timestamp + "-" + safeName);
+  const blob = uploadBlob.copyBlob().setName(timestamp + "-" + safeName);
   const file = createDriveFile_(blob);
 
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -67,10 +79,11 @@ function processForm(obj) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ws = ensureSheet_(ss);
     let imageUrl = obj.existingUrl || "";
+    const uploadBlob = extractUploadBlob_(obj);
 
-    if (obj.fileData && obj.fileData.data && obj.fileData.type && obj.fileData.name) {
+    if (uploadBlob) {
       try {
-        imageUrl = uploadImageAndGetUrl_(obj.fileData);
+        imageUrl = uploadImageAndGetUrl_(uploadBlob);
       } catch (err) {
         console.error("File Upload Error: " + err.toString());
         throw new Error("Image upload failed: " + err.message);
