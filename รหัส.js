@@ -1,5 +1,5 @@
-const SHEET_NAME = "Data";
-const FOLDER_ID = "1fKeFzTr2_KgrVj9eS_k2cGBeFWKMlmzWt1uCC55oOSc";
+﻿const SHEET_NAME = "Data";
+const FOLDER_ID = "17JcA2T0cJ0LEXNUWs-hpFOTveZ1VT5tR";
 
 function doGet() {
   return HtmlService.createTemplateFromFile("Index")
@@ -47,17 +47,57 @@ function createDriveFile_(blob) {
   return DriveApp.createFile(blob);
 }
 
-function extractUploadBlob_(obj) {
-  if (obj && obj.imageFile && typeof obj.imageFile.getBytes === "function") {
-    return obj.imageFile;
+function normalizeImageUrls_(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map(function(item) {
+      return item.trim();
+    })
+    .filter(Boolean);
+}
+
+function extractUploadBlobs_(obj) {
+  const uploadBlobs = [];
+
+  if (obj && obj.imageFile) {
+    const imageFiles = Array.isArray(obj.imageFile) ? obj.imageFile : [obj.imageFile];
+    imageFiles.forEach(function(file) {
+      if (file && typeof file.getBytes === "function") {
+        uploadBlobs.push(file);
+      }
+    });
   }
 
-  if (obj && obj.fileData && obj.fileData.data && obj.fileData.type && obj.fileData.name) {
-    const bytes = Utilities.base64Decode(obj.fileData.data);
-    return Utilities.newBlob(bytes, obj.fileData.type, obj.fileData.name);
+  if (uploadBlobs.length > 0) {
+    return uploadBlobs;
   }
 
-  return null;
+  if (obj) {
+    Object.keys(obj).forEach(function(key) {
+      if (key.indexOf("imageFile_") === 0) {
+        const file = obj[key];
+        if (file && typeof file.getBytes === "function") {
+          uploadBlobs.push(file);
+        }
+      }
+    });
+  }
+
+  if (uploadBlobs.length > 0) {
+    return uploadBlobs;
+  }
+
+  if (obj && obj.fileData) {
+    const legacyFiles = Array.isArray(obj.fileData) ? obj.fileData : [obj.fileData];
+    legacyFiles.forEach(function(fileData) {
+      if (fileData && fileData.data && fileData.type && fileData.name) {
+        const bytes = Utilities.base64Decode(fileData.data);
+        uploadBlobs.push(Utilities.newBlob(bytes, fileData.type, fileData.name));
+      }
+    });
+  }
+
+  return uploadBlobs;
 }
 
 function uploadImageAndGetUrl_(uploadBlob) {
@@ -74,27 +114,35 @@ function uploadImageAndGetUrl_(uploadBlob) {
   return file.getUrl();
 }
 
+function uploadImagesAndGetUrls_(uploadBlobs) {
+  return uploadBlobs.map(function(uploadBlob) {
+    return uploadImageAndGetUrl_(uploadBlob);
+  });
+}
+
 function processForm(obj) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ws = ensureSheet_(ss);
-    let imageUrl = obj.existingUrl || "";
-    const uploadBlob = extractUploadBlob_(obj);
+    let imageUrls = normalizeImageUrls_(obj.existingUrl);
+    const uploadBlobs = extractUploadBlobs_(obj);
 
-    if (uploadBlob) {
+    if (uploadBlobs.length > 0) {
       try {
-        imageUrl = uploadImageAndGetUrl_(uploadBlob);
+        imageUrls = uploadImagesAndGetUrls_(uploadBlobs);
       } catch (err) {
         console.error("File Upload Error: " + err.toString());
         throw new Error("Image upload failed: " + err.message);
       }
     }
 
+    const imageUrlValue = imageUrls.join("\n");
+
     if (obj.rowId) {
       const data = ws.getDataRange().getValues();
       for (let i = 1; i < data.length; i += 1) {
         if (data[i][0] === obj.rowId) {
-          ws.getRange(i + 1, 3, 1, 4).setValues([[obj.machine, imageUrl, obj.issue, obj.remark]]);
+          ws.getRange(i + 1, 3, 1, 4).setValues([[obj.machine, imageUrlValue, obj.issue, obj.remark]]);
           return "Record updated successfully.";
         }
       }
@@ -102,7 +150,7 @@ function processForm(obj) {
       throw new Error("Record ID not found.");
     }
 
-    ws.appendRow([Utilities.getUuid(), new Date(), obj.machine, imageUrl, obj.issue, obj.remark]);
+    ws.appendRow([Utilities.getUuid(), new Date(), obj.machine, imageUrlValue, obj.issue, obj.remark]);
     return "Saved successfully.";
   } catch (e) {
     return "Error: " + e.toString();

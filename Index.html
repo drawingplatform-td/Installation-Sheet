@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -26,8 +26,17 @@
 
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-1">B: รูปภาพความผิดปกติ</label>
-          <input type="file" id="fileInput" name="imageFile" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-          <div id="fileHint" class="mt-2 text-xs text-slate-500">ยังไม่ได้เลือกรูปใหม่ ระบบจะใช้รูปล่าสุดของรายการเดิมถ้ามี</div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <button type="button" id="btnCamera" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 text-sm font-bold transition">
+              ถ่ายรูป
+            </button>
+            <button type="button" id="btnChooseFile" class="rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-3 text-sm font-bold border border-blue-200 transition">
+              เลือกไฟล์
+            </button>
+          </div>
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple class="hidden">
+          <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+          <div id="fileHint" class="mt-2 text-xs text-slate-500">ยังไม่ได้เลือกรูปใหม่ ระบบจะใช้รูปเดิมของรายการนี้ถ้ามี</div>
           <div id="previewText" class="mt-1 hidden text-xs text-green-700 font-bold">กำลังใช้รูปเดิมของรายการนี้</div>
         </div>
 
@@ -42,9 +51,7 @@
                 ล้างรูปที่เลือก
               </button>
             </div>
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <img id="imagePreview" alt="Image preview" class="h-56 w-full object-cover">
-            </div>
+            <div id="imagePreviewGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"></div>
           </div>
         </div>
 
@@ -60,10 +67,15 @@
       </div>
 
       <div id="formStatus" class="hidden rounded-2xl border px-4 py-3 text-sm font-medium" role="status" aria-live="polite"></div>
+      <div id="preparedUploadInputs" class="hidden"></div>
 
       <div class="flex gap-3 mt-4">
-        <button type="submit" id="btnSubmit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-bold text-lg shadow-lg transition active:scale-95">บันทึกข้อมูล</button>
-        <button type="button" onclick="resetForm()" id="btnCancel" class="hidden bg-slate-400 hover:bg-slate-500 text-white px-8 rounded-2xl font-bold transition">ยกเลิก</button>
+        <button type="submit" id="btnSubmit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-bold text-lg shadow-lg transition active:scale-95">
+          บันทึกข้อมูล
+        </button>
+        <button type="button" onclick="resetForm()" id="btnCancel" class="hidden bg-slate-400 hover:bg-slate-500 text-white px-8 rounded-2xl font-bold transition">
+          ยกเลิก
+        </button>
       </div>
     </form>
 
@@ -72,7 +84,10 @@
         <h3 class="font-bold text-slate-700">ประวัติรายการที่บันทึก</h3>
         <button onclick="loadHistory()" class="text-blue-600 text-sm hover:underline">รีเฟรชข้อมูล</button>
       </div>
-      <div class="table-container">
+
+      <div id="historyCards" class="p-3 space-y-3 md:hidden"></div>
+
+      <div class="table-container hidden md:block">
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-slate-100 text-xs uppercase text-slate-600 border-b">
@@ -94,27 +109,47 @@
     const form = document.getElementById("mainForm");
     const btnSubmit = document.getElementById("btnSubmit");
     const btnCancel = document.getElementById("btnCancel");
+    const btnCamera = document.getElementById("btnCamera");
+    const btnChooseFile = document.getElementById("btnChooseFile");
     const rowIdInput = document.getElementById("rowId");
     const existingUrlInput = document.getElementById("existingUrl");
+    const cameraInput = document.getElementById("cameraInput");
     const fileInput = document.getElementById("fileInput");
     const fileHint = document.getElementById("fileHint");
     const previewText = document.getElementById("previewText");
     const formStatus = document.getElementById("formStatus");
     const imagePreviewCard = document.getElementById("imagePreviewCard");
-    const imagePreview = document.getElementById("imagePreview");
     const imagePreviewTitle = document.getElementById("imagePreviewTitle");
     const imagePreviewMeta = document.getElementById("imagePreviewMeta");
+    const imagePreviewGrid = document.getElementById("imagePreviewGrid");
     const clearSelectedImageBtn = document.getElementById("clearSelectedImageBtn");
+    const preparedUploadInputs = document.getElementById("preparedUploadInputs");
+    const historyCards = document.getElementById("historyCards");
 
-    let localPreviewUrl = "";
-    let originalSelectedFile = null;
     const MAX_IMAGE_DIMENSION = 1024;
-    const TARGET_UPLOAD_SIZE_BYTES = 500 * 1024;
-    const JPEG_QUALITY_STEPS = [0.82, 0.74, 0.68, 0.62, 0.56, 0.5];
+    const TARGET_UPLOAD_SIZE_BYTES = 125 * 1024;
+    const JPEG_QUALITY_STEPS = [0.76, 0.68, 0.6, 0.52, 0.44, 0.36, 0.28];
+    const MIN_DIMENSION_FLOOR = 480;
+
+    const state = {
+      selectedFiles: [],
+      localPreviewUrls: []
+    };
 
     window.onload = loadHistory;
-    fileInput.addEventListener("change", handleFileSelection);
-    clearSelectedImageBtn.addEventListener("click", clearSelectedImage);
+    btnCamera.addEventListener("click", function() {
+      cameraInput.click();
+    });
+    btnChooseFile.addEventListener("click", function() {
+      fileInput.click();
+    });
+    cameraInput.addEventListener("change", function() {
+      appendSelectedFiles(cameraInput.files, "ถ่ายรูป");
+    });
+    fileInput.addEventListener("change", function() {
+      appendSelectedFiles(fileInput.files, "เลือกไฟล์");
+    });
+    clearSelectedImageBtn.addEventListener("click", clearSelectedImages);
 
     function getSubmitLabel() {
       return rowIdInput.value ? "อัปเดตข้อมูล" : "บันทึกข้อมูล";
@@ -163,6 +198,75 @@
       return (bytes / (1024 * 1024)).toFixed(2) + " MB";
     }
 
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/'/g, "&#39;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function escapeJsString(value) {
+      return String(value || "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+    }
+
+    function normalizeUrlList(value) {
+      return String(value || "")
+        .split(/\r?\n/)
+        .map(function(item) {
+          return item.trim();
+        })
+        .filter(Boolean);
+    }
+
+    function getExistingUrls() {
+      return normalizeUrlList(existingUrlInput.value);
+    }
+
+    function makeFileKey(file) {
+      return [file.name || "", file.size || 0, file.lastModified || 0].join("::");
+    }
+
+    function getDriveFileId(url) {
+      const text = String(url || "");
+      const patterns = [
+        /\/file\/d\/([a-zA-Z0-9_-]+)/,
+        /[?&]id=([a-zA-Z0-9_-]+)/,
+        /\/open\?id=([a-zA-Z0-9_-]+)/,
+        /\/thumbnail\?id=([a-zA-Z0-9_-]+)/
+      ];
+
+      for (let i = 0; i < patterns.length; i += 1) {
+        const match = text.match(patterns[i]);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+
+      return "";
+    }
+
+    function getPreviewImageUrl(url) {
+      const fileId = getDriveFileId(url);
+      if (fileId) {
+        return "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w1000";
+      }
+      return url || "";
+    }
+
+    function revokeLocalPreviewUrls() {
+      state.localPreviewUrls.forEach(function(url) {
+        URL.revokeObjectURL(url);
+      });
+      state.localPreviewUrls = [];
+    }
     function getImageDimensionsFromFile(file) {
       return new Promise(function(resolve, reject) {
         const previewUrl = URL.createObjectURL(file);
@@ -239,27 +343,6 @@
       return canvas;
     }
 
-    function makeUploadFileName(file) {
-      return String(file.name || "image")
-        .replace(/\.[^.]+$/, "")
-        .replace(/[^\w.\-() ]/g, "_") + ".jpg";
-    }
-
-    function makePngUploadFileName(file) {
-      return String(file.name || "image")
-        .replace(/\.[^.]+$/, "")
-        .replace(/[^\w.\-() ]/g, "_") + ".png";
-    }
-
-    function replaceSelectedFile(file) {
-      if (typeof DataTransfer === "undefined") {
-        throw new Error("เบราว์เซอร์นี้ไม่รองรับการเตรียมไฟล์อัปโหลดแบบใหม่");
-      }
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      fileInput.files = transfer.files;
-    }
-
     function canvasHasTransparency(canvas) {
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) {
@@ -276,6 +359,13 @@
       return false;
     }
 
+    function makeUploadFileName(file, extension) {
+      const baseName = String(file.name || "image")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^\w.\-() ]/g, "_");
+      return baseName + "." + extension;
+    }
+
     async function prepareUploadFile(file) {
       if (file.type === "image/gif") {
         const gifDimensions = await getImageDimensionsFromFile(file);
@@ -285,7 +375,8 @@
           compressedSize: file.size || 0,
           width: gifDimensions.width || 0,
           height: gifDimensions.height || 0,
-          note: "ระบบใช้ไฟล์ GIF ต้นฉบับเพื่อรักษาภาพเคลื่อนไหว"
+          skippedCompression: true,
+          note: "ใช้ GIF ต้นฉบับเพื่อรักษาภาพเคลื่อนไหว"
         };
       }
 
@@ -295,38 +386,52 @@
       let targetHeight = image.naturalHeight || image.height || 1;
       const mayContainTransparency = file.type === "image/png" || file.type === "image/webp";
 
+      if (
+        file.size <= TARGET_UPLOAD_SIZE_BYTES &&
+        targetWidth <= MAX_IMAGE_DIMENSION &&
+        targetHeight <= MAX_IMAGE_DIMENSION
+      ) {
+        return {
+          file: file,
+          originalSize: file.size || 0,
+          compressedSize: file.size || 0,
+          width: targetWidth,
+          height: targetHeight,
+          skippedCompression: true,
+          note: "ไฟล์เล็กอยู่แล้ว จึงข้ามการบีบอัดเพื่อให้อัปโหลดเร็วขึ้น"
+        };
+      }
+
       if (targetWidth > MAX_IMAGE_DIMENSION || targetHeight > MAX_IMAGE_DIMENSION) {
         const scale = Math.min(MAX_IMAGE_DIMENSION / targetWidth, MAX_IMAGE_DIMENSION / targetHeight);
         targetWidth = Math.max(1, Math.round(targetWidth * scale));
         targetHeight = Math.max(1, Math.round(targetHeight * scale));
       }
 
-      const outputType = "image/jpeg";
-      const fileName = makeUploadFileName(file);
       let currentWidth = targetWidth;
       let currentHeight = targetHeight;
-      let blob = null;
 
       while (true) {
         const canvas = drawResizedImageToCanvas(image, currentWidth, currentHeight);
         const hasTransparency = mayContainTransparency && canvasHasTransparency(canvas);
 
         if (hasTransparency) {
-          blob = await canvasToBlob(canvas, "image/png");
-
-          if (blob.size <= TARGET_UPLOAD_SIZE_BYTES || (currentWidth <= 720 && currentHeight <= 720)) {
-            const pngFile = new File([blob], makePngUploadFileName(file), {
-              type: "image/png",
-              lastModified: Date.now()
-            });
-
+          const pngBlob = await canvasToBlob(canvas, "image/png");
+          if (
+            pngBlob.size <= TARGET_UPLOAD_SIZE_BYTES ||
+            (currentWidth <= MIN_DIMENSION_FLOOR && currentHeight <= MIN_DIMENSION_FLOOR)
+          ) {
             return {
-              file: pngFile,
+              file: new File([pngBlob], makeUploadFileName(file, "png"), {
+                type: "image/png",
+                lastModified: Date.now()
+              }),
               originalSize: file.size || 0,
-              compressedSize: blob.size || 0,
+              compressedSize: pngBlob.size || 0,
               width: currentWidth,
               height: currentHeight,
-              note: "ระบบเก็บ transparency ไว้โดยบันทึกเป็น PNG"
+              skippedCompression: false,
+              note: "เก็บ transparency ไว้โดยบันทึกเป็น PNG"
             };
           }
 
@@ -335,122 +440,164 @@
           continue;
         }
 
+        let jpegBlob = null;
         for (let i = 0; i < JPEG_QUALITY_STEPS.length; i += 1) {
-          blob = await canvasToBlob(canvas, outputType, JPEG_QUALITY_STEPS[i]);
-          if (blob.size <= TARGET_UPLOAD_SIZE_BYTES) {
+          jpegBlob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY_STEPS[i]);
+          if (jpegBlob.size <= TARGET_UPLOAD_SIZE_BYTES) {
             break;
           }
         }
 
-        if (blob && blob.size <= TARGET_UPLOAD_SIZE_BYTES) {
-          break;
-        }
-
-        if (currentWidth <= 720 && currentHeight <= 720) {
-          break;
+        if (
+          jpegBlob &&
+          (jpegBlob.size <= TARGET_UPLOAD_SIZE_BYTES ||
+            (currentWidth <= MIN_DIMENSION_FLOOR && currentHeight <= MIN_DIMENSION_FLOOR))
+        ) {
+          return {
+            file: new File([jpegBlob], makeUploadFileName(file, "jpg"), {
+              type: "image/jpeg",
+              lastModified: Date.now()
+            }),
+            originalSize: file.size || 0,
+            compressedSize: jpegBlob.size || 0,
+            width: currentWidth,
+            height: currentHeight,
+            skippedCompression: false,
+            note: "ย่อและบีบอัดรูปก่อนอัปโหลด"
+          };
         }
 
         currentWidth = Math.max(1, Math.round(currentWidth * 0.88));
         currentHeight = Math.max(1, Math.round(currentHeight * 0.88));
       }
+    }
 
-      const uploadFile = new File([blob], fileName, {
-        type: outputType,
-        lastModified: Date.now()
+    function replaceFilesForSubmit(files) {
+      if (typeof DataTransfer === "undefined") {
+        throw new Error("เบราว์เซอร์นี้ไม่รองรับการเตรียมไฟล์หลายรูปก่อนอัปโหลด");
+      }
+
+      const transfer = new DataTransfer();
+      [].concat(files || []).forEach(function(file) {
+        transfer.items.add(file);
       });
-
-      return {
-        file: uploadFile,
-        originalSize: file.size || 0,
-        compressedSize: blob.size || 0,
-        width: currentWidth,
-        height: currentHeight,
-        note: "ระบบย่อและบีบอัดรูปเป็น JPEG ก่อนอัปโหลด"
-      };
+      fileInput.files = transfer.files;
     }
 
-    function escapeHtml(value) {
-      return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/'/g, "&#39;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    function clearPreparedUploadInputs() {
+      preparedUploadInputs.innerHTML = "";
     }
 
-    function escapeJsString(value) {
-      return String(value || "")
-        .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'")
-        .replace(/\r/g, "\\r")
-        .replace(/\n/g, "\\n")
-        .replace(/\u2028/g, "\\u2028")
-        .replace(/\u2029/g, "\\u2029");
+    function buildPreparedUploadInputs(files) {
+      clearPreparedUploadInputs();
+
+      [].concat(files || []).forEach(function(file, index) {
+        const input = document.createElement("input");
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+
+        input.type = "file";
+        input.name = "imageFile_" + index;
+        input.className = "hidden";
+        input.files = transfer.files;
+        preparedUploadInputs.appendChild(input);
+      });
     }
 
-    function getDriveFileId(url) {
-      const text = String(url || "");
-      const patterns = [
-        /\/file\/d\/([a-zA-Z0-9_-]+)/,
-        /[?&]id=([a-zA-Z0-9_-]+)/,
-        /\/open\?id=([a-zA-Z0-9_-]+)/,
-        /\/thumbnail\?id=([a-zA-Z0-9_-]+)/
-      ];
-
-      for (let i = 0; i < patterns.length; i += 1) {
-        const match = text.match(patterns[i]);
-        if (match && match[1]) {
-          return match[1];
-        }
-      }
-
-      return "";
-    }
-
-    function getPreviewImageUrl(url) {
-      const fileId = getDriveFileId(url);
-      if (fileId) {
-        return "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w1000";
-      }
-      return url || "";
-    }
-
-    function releaseLocalPreview() {
-      if (localPreviewUrl) {
-        URL.revokeObjectURL(localPreviewUrl);
-        localPreviewUrl = "";
-      }
-    }
-
-    function showImagePreview(src, title, meta, isSelectedFile) {
-      if (!src) {
-        hideImagePreview();
+    function renderPreviewGallery(items, title, meta, isSelectedFile) {
+      if (!items || items.length === 0) {
+        hidePreviewGallery();
         return;
       }
 
-      imagePreview.src = src;
       imagePreviewTitle.textContent = title;
       imagePreviewMeta.textContent = meta;
+      imagePreviewGrid.innerHTML = "";
+
+      items.forEach(function(item, index) {
+        const wrapper = document.createElement(item.fullUrl ? "a" : "div");
+        wrapper.className = "block overflow-hidden rounded-2xl border border-slate-200 bg-white";
+
+        if (item.fullUrl) {
+          wrapper.href = item.fullUrl;
+          wrapper.target = "_blank";
+          wrapper.rel = "noopener noreferrer";
+        }
+
+        const image = document.createElement("img");
+        image.src = item.src;
+        image.alt = item.label || ("Inspection image " + (index + 1));
+        image.className = "h-32 w-full object-cover";
+        wrapper.appendChild(image);
+
+        imagePreviewGrid.appendChild(wrapper);
+      });
+
       imagePreviewCard.classList.remove("hidden");
       clearSelectedImageBtn.classList.toggle("hidden", !isSelectedFile);
     }
 
-    function hideImagePreview() {
-      imagePreview.removeAttribute("src");
+    function hidePreviewGallery() {
+      imagePreviewGrid.innerHTML = "";
       imagePreviewCard.classList.add("hidden");
       clearSelectedImageBtn.classList.add("hidden");
     }
+    function renderSelectedPreview() {
+      if (state.selectedFiles.length > 0) {
+        revokeLocalPreviewUrls();
+
+        const items = state.selectedFiles.map(function(file, index) {
+          const previewUrl = URL.createObjectURL(file);
+          state.localPreviewUrls.push(previewUrl);
+          return {
+            src: previewUrl,
+            fullUrl: previewUrl,
+            label: file.name || ("รูปที่ " + (index + 1))
+          };
+        });
+
+        renderPreviewGallery(
+          items,
+          "ตัวอย่างรูปก่อนอัปโหลด",
+          "เลือกรูปไว้ " + state.selectedFiles.length + " รูป",
+          true
+        );
+        return;
+      }
+
+      const existingUrls = getExistingUrls();
+      if (existingUrls.length > 0) {
+        renderPreviewGallery(
+          existingUrls.map(function(url, index) {
+            return {
+              src: getPreviewImageUrl(url),
+              fullUrl: url,
+              label: "รูปเดิม " + (index + 1)
+            };
+          }),
+          "ตัวอย่างรูปเดิม",
+          "กำลังใช้รูปเดิม " + existingUrls.length + " รูป",
+          false
+        );
+        return;
+      }
+
+      hidePreviewGallery();
+    }
 
     function updateFileHint() {
-      const file = fileInput.files[0];
-      if (file) {
-        fileHint.textContent = "เลือกรูปใหม่: " + file.name + " (" + formatFileSize(file.size) + ")";
+      if (state.selectedFiles.length > 0) {
+        const totalSize = state.selectedFiles.reduce(function(sum, file) {
+          return sum + (file.size || 0);
+        }, 0);
+        fileHint.textContent = "เลือกรูปใหม่ " + state.selectedFiles.length + " รูป (" + formatFileSize(totalSize) + ")";
         fileHint.className = "mt-2 text-xs text-blue-700 font-medium";
         return;
       }
 
-      if (existingUrlInput.value) {
-        fileHint.textContent = "ยังไม่ได้เลือกรูปใหม่ ระบบจะใช้รูปเดิมของรายการนี้";
+      const existingUrls = getExistingUrls();
+      if (existingUrls.length > 0) {
+        fileHint.textContent = "ยังไม่ได้เลือกรูปใหม่ ระบบจะใช้รูปเดิม " + existingUrls.length + " รูป ของรายการนี้";
         fileHint.className = "mt-2 text-xs text-slate-500";
         return;
       }
@@ -459,84 +606,116 @@
       fileHint.className = "mt-2 text-xs text-slate-500";
     }
 
-    function clearSelectedImage() {
+    function clearInputBuffers() {
+      cameraInput.value = "";
       fileInput.value = "";
-      originalSelectedFile = null;
-      releaseLocalPreview();
-      updateFileHint();
+    }
 
-      if (existingUrlInput.value) {
-        previewText.classList.remove("hidden");
-        showImagePreview(
-          getPreviewImageUrl(existingUrlInput.value),
-          "ตัวอย่างรูปเดิม",
-          "กำลังใช้รูปเดิมของรายการนี้",
-          false
-        );
-      } else {
-        previewText.classList.add("hidden");
-        hideImagePreview();
+    function appendSelectedFiles(fileList, sourceLabel) {
+      const incomingFiles = Array.from(fileList || []);
+      if (incomingFiles.length === 0) {
+        return;
       }
 
+      const knownKeys = {};
+      state.selectedFiles.forEach(function(file) {
+        knownKeys[makeFileKey(file)] = true;
+      });
+
+      const uniqueIncoming = incomingFiles.filter(function(file) {
+        const key = makeFileKey(file);
+        if (knownKeys[key]) {
+          return false;
+        }
+
+        knownKeys[key] = true;
+        return true;
+      });
+
+      clearInputBuffers();
+
+      if (uniqueIncoming.length === 0) {
+        showStatus("warning", "ไฟล์ที่เลือกซ้ำกับรูปที่มีอยู่แล้ว");
+        return;
+      }
+
+      state.selectedFiles = state.selectedFiles.concat(uniqueIncoming);
+      previewText.classList.add("hidden");
+      updateFileHint();
+      renderSelectedPreview();
+      showStatus("info", sourceLabel + " เพิ่มแล้ว " + uniqueIncoming.length + " รูป รวมทั้งหมด " + state.selectedFiles.length + " รูป");
+    }
+
+    function clearSelectedImages() {
+      state.selectedFiles = [];
+      revokeLocalPreviewUrls();
+      clearInputBuffers();
+      clearPreparedUploadInputs();
+      updateFileHint();
+
+      if (getExistingUrls().length > 0) {
+        previewText.classList.remove("hidden");
+        previewText.textContent = "กำลังใช้รูปเดิมของรายการนี้";
+      } else {
+        previewText.classList.add("hidden");
+      }
+
+      renderSelectedPreview();
       clearStatus();
       resetSubmitState();
     }
 
-    function handleFileSelection() {
-      const file = fileInput.files[0];
-      updateFileHint();
-
-      if (!file) {
-        clearSelectedImage();
-        return;
+    function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible) {
+      if (!urls || urls.length === 0) {
+        return '<div class="rounded-xl border border-dashed border-slate-200 p-4 text-xs italic text-slate-300">ไม่มีรูป</div>';
       }
 
-      originalSelectedFile = file;
-      releaseLocalPreview();
-      localPreviewUrl = URL.createObjectURL(file);
-      previewText.classList.add("hidden");
+      const visibleUrls = urls.slice(0, maxVisible);
+      const itemsHtml = visibleUrls.map(function(url, index) {
+        const safeUrl = escapeHtml(url);
+        const previewUrl = escapeHtml(getPreviewImageUrl(url));
+        return '' +
+          '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="' + wrapperClass + '">' +
+            '<img src="' + previewUrl + '" alt="Inspection image ' + (index + 1) + '" class="' + imageClass + '">' +
+          '</a>';
+      }).join("");
 
-      showImagePreview(
-        localPreviewUrl,
-        "ตัวอย่างรูปก่อนอัปโหลด",
-        file.name + " • " + formatFileSize(file.size) + " • ระบบจะย่อรูปก่อนอัปโหลด",
-        true
-      );
+      const moreBadge = urls.length > maxVisible
+        ? '<div class="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">+' + (urls.length - maxVisible) + '</div>'
+        : "";
 
-      showStatus("info", "เลือกรูปใหม่แล้ว ระบบจะย่อและบีบอัดรูปอัตโนมัติก่อนอัปโหลด");
+      return itemsHtml + moreBadge;
     }
 
     function renderHistory(data) {
       const tbody = document.getElementById("historyList");
       tbody.innerHTML = "";
+      historyCards.innerHTML = "";
 
       if (!data || data.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="p-10 text-center text-slate-400">ไม่พบประวัติการบันทึก</td></tr>';
+        historyCards.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">ไม่พบประวัติการบันทึก</div>';
         return;
       }
 
       [].concat(data).reverse().forEach(function(row) {
-        const tr = document.createElement("tr");
-        tr.className = "hover:bg-blue-50 transition-colors align-top";
         const dateStr = row[1] ? new Date(row[1]).toLocaleString("th-TH") : "-";
         const machineText = escapeHtml(row[2] || "-");
-        const imageUrl = String(row[3] || "");
-        const safeImageUrl = escapeHtml(imageUrl);
-        const previewUrl = escapeHtml(getPreviewImageUrl(imageUrl));
+        const imageUrls = normalizeUrlList(row[3]);
         const issueText = escapeHtml(row[4] || "-");
         const remarkText = escapeHtml(row[5] || "-");
 
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-blue-50 transition-colors align-top";
         tr.innerHTML = `
           <td class="p-4 font-semibold text-slate-800">${machineText}</td>
           <td class="p-4">
-            ${imageUrl ? `
-              <div class="w-28">
-                <a href="${safeImageUrl}" target="_blank" class="block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300">
-                  <img src="${previewUrl}" alt="Inspection image" class="h-20 w-28 object-cover">
-                </a>
-                <a href="${safeImageUrl}" target="_blank" class="mt-2 inline-block text-xs font-bold text-blue-600 hover:underline">ดูรูปเต็ม</a>
+            <div class="w-40">
+              <div class="grid grid-cols-2 gap-2">
+                ${buildImageGalleryHtml(imageUrls, "h-20 w-full object-cover", "block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300", 4)}
               </div>
-            ` : '<span class="text-slate-300 italic text-xs">ไม่มีรูป</span>'}
+              <div class="mt-2 text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? imageUrls.length + " รูป" : "ไม่มีรูป"}</div>
+            </div>
           </td>
           <td class="p-4 text-slate-600 font-medium">${issueText}</td>
           <td class="p-4 text-slate-500 text-xs">${remarkText}</td>
@@ -549,12 +728,51 @@
           </td>
         `;
         tbody.appendChild(tr);
+
+        const card = document.createElement("div");
+        card.className = "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-400">เครื่องจักร</div>
+              <div class="mt-1 text-sm font-semibold text-slate-800 break-words">${machineText}</div>
+            </div>
+            <button onclick="editMode('${escapeJsString(row[0])}','${escapeJsString(row[2])}','${escapeJsString(row[3])}','${escapeJsString(row[4])}','${escapeJsString(row[5])}')"
+                    class="shrink-0 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold text-amber-700">
+              แก้ไข
+            </button>
+          </div>
+          <div class="mt-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-400">รูปภาพ</div>
+              <div class="text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? imageUrls.length + " รูป" : "ไม่มีรูป"}</div>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              ${buildImageGalleryHtml(imageUrls, "h-28 w-full object-cover", "block overflow-hidden rounded-xl border border-slate-200 bg-white", 6)}
+            </div>
+          </div>
+          <div class="mt-3 grid grid-cols-1 gap-3">
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-400">จุดแก้ไข</div>
+              <div class="mt-1 text-sm text-slate-700 break-words">${issueText}</div>
+            </div>
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-400">หมายเหตุ</div>
+              <div class="mt-1 text-sm text-slate-500 break-words">${remarkText}</div>
+            </div>
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wide text-slate-400">วันที่</div>
+              <div class="mt-1 text-xs text-slate-500">${dateStr}</div>
+            </div>
+          </div>
+        `;
+        historyCards.appendChild(card);
       });
     }
-
     function loadHistory() {
       const tbody = document.getElementById("historyList");
       tbody.innerHTML = '<tr><td colspan="6" class="p-10 text-center text-slate-400 italic">กำลังดึงข้อมูล...</td></tr>';
+      historyCards.innerHTML = '<div class="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">กำลังดึงข้อมูล...</div>';
       google.script.run.withSuccessHandler(renderHistory).getHistory();
     }
 
@@ -568,29 +786,42 @@
     form.onsubmit = async function(e) {
       e.preventDefault();
 
-      const file = fileInput.files[0];
-
-      if (file) {
+      if (state.selectedFiles.length > 0) {
         try {
-          setSubmitBusy("กำลังย่อรูป...");
-          showStatus("info", "กำลังย่อและบีบอัดรูปก่อนอัปโหลด");
+          const preparedEntries = [];
+          let totalOriginalSize = 0;
+          let totalCompressedSize = 0;
+          let skippedCompressionCount = 0;
 
-          const preparedFile = await prepareUploadFile(originalSelectedFile || file);
-          replaceSelectedFile(preparedFile.file);
-          updateFileHint();
+          for (let i = 0; i < state.selectedFiles.length; i += 1) {
+            setSubmitBusy("กำลังเตรียมรูป " + (i + 1) + "/" + state.selectedFiles.length + "...");
+            showStatus("info", "กำลังเตรียมรูป " + (i + 1) + "/" + state.selectedFiles.length);
 
-          showImagePreview(
-            localPreviewUrl || imagePreview.src,
-            "ตัวอย่างรูปก่อนอัปโหลด",
-            preparedFile.width + "x" + preparedFile.height + " • " +
-              formatFileSize(preparedFile.originalSize) + " -> " +
-              formatFileSize(preparedFile.compressedSize) +
-              (preparedFile.note ? " • " + preparedFile.note : ""),
-            true
-          );
+            const prepared = await prepareUploadFile(state.selectedFiles[i]);
+            preparedEntries.push(prepared);
+            totalOriginalSize += prepared.originalSize || 0;
+            totalCompressedSize += prepared.compressedSize || 0;
+            if (prepared.skippedCompression) {
+              skippedCompressionCount += 1;
+            }
+          }
+
+          replaceFilesForSubmit(preparedEntries.map(function(item) {
+            return item.file;
+          }));
+          buildPreparedUploadInputs(preparedEntries.map(function(item) {
+            return item.file;
+          }));
+
+          renderSelectedPreview();
+          imagePreviewMeta.textContent =
+            "รวม " + preparedEntries.length + " รูป • " +
+            formatFileSize(totalOriginalSize) + " -> " +
+            formatFileSize(totalCompressedSize) +
+            (skippedCompressionCount > 0 ? " • ข้ามการบีบอัด " + skippedCompressionCount + " รูป" : "");
 
           setSubmitBusy("กำลังอัปโหลดรูป...");
-          showStatus("info", "กำลังอัปโหลดรูปที่ย่อแล้วและบันทึกข้อมูล");
+          showStatus("info", "กำลังอัปโหลดรูป " + preparedEntries.length + " ไฟล์และบันทึกข้อมูล");
           submitToServer();
         } catch (error) {
           showStatus("error", error && error.message ? error.message : "เตรียมรูปก่อนอัปโหลดไม่สำเร็จ");
@@ -623,9 +854,10 @@
     }
 
     function editMode(id, machine, url, issue, remark) {
-      fileInput.value = "";
-      originalSelectedFile = null;
-      releaseLocalPreview();
+      state.selectedFiles = [];
+      revokeLocalPreviewUrls();
+      clearInputBuffers();
+      clearPreparedUploadInputs();
       rowIdInput.value = id;
       document.getElementById("machine").value = machine;
       existingUrlInput.value = url;
@@ -636,37 +868,36 @@
       btnSubmit.className = "flex-1 bg-amber-600 hover:bg-amber-700 text-white p-4 rounded-2xl font-bold text-lg shadow-lg transition";
       btnCancel.classList.remove("hidden");
 
-      if (url && url !== "undefined") {
+      const existingUrls = getExistingUrls();
+      if (existingUrls.length > 0) {
         previewText.classList.remove("hidden");
-        showImagePreview(
-          getPreviewImageUrl(url),
-          "ตัวอย่างรูปเดิม",
-          "หากไม่เลือกรูปใหม่ ระบบจะใช้รูปเดิมนี้",
-          false
-        );
+        previewText.textContent = "หากไม่เลือกรูปใหม่ ระบบจะใช้รูปเดิม " + existingUrls.length + " รูป";
       } else {
         previewText.classList.add("hidden");
-        hideImagePreview();
       }
 
       updateFileHint();
-      showStatus("warning", "กำลังแก้ไขรายการเดิม หากไม่เลือกรูปใหม่ ระบบจะใช้รูปเดิม");
+      renderSelectedPreview();
+      showStatus("warning", "กำลังแก้ไขรายการเดิม หากเลือกรูปใหม่ ระบบจะใช้ชุดรูปใหม่แทนรูปเดิม");
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     function resetForm(preserveStatus) {
       form.reset();
-      originalSelectedFile = null;
-      releaseLocalPreview();
+      state.selectedFiles = [];
+      revokeLocalPreviewUrls();
+      clearInputBuffers();
+      clearPreparedUploadInputs();
       rowIdInput.value = "";
       existingUrlInput.value = "";
       btnSubmit.innerText = "บันทึกข้อมูล";
       btnSubmit.className = "flex-1 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl font-bold text-lg shadow-lg transition active:scale-95";
       btnCancel.classList.add("hidden");
       previewText.classList.add("hidden");
-      hideImagePreview();
+      hidePreviewGallery();
       updateFileHint();
       resetSubmitState();
+
       if (!preserveStatus) {
         clearStatus();
       }
