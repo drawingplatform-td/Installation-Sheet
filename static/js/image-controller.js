@@ -132,6 +132,31 @@ export function createImageController({
     );
   }
 
+  function removeSelectedFile(index) {
+    const removedFile = state.selectedFiles[index];
+    if (!removedFile) {
+      return;
+    }
+
+    state.selectedFiles = state.selectedFiles.filter((file, fileIndex) => fileIndex !== index);
+    clearInputBuffers();
+    syncRemovedImagesInput();
+    updateFileHint();
+    renderSelectedPreview();
+
+    if (state.selectedFiles.length === 0 && getActiveExistingUrls().length === 0) {
+      elements.previewText.classList.add("hidden");
+      clearStatus();
+      resetSubmitState();
+      return;
+    }
+
+    showStatus(
+      "warning",
+      `Removed "${removedFile.name || "selected image"}". ${state.selectedFiles.length} new image(s) remaining.`
+    );
+  }
+
   function renderSelectedPreview() {
     revokeLocalPreviewUrls();
 
@@ -149,6 +174,7 @@ export function createImageController({
       return {
         src: previewUrl,
         fullUrl: previewUrl,
+        onRemove: () => removeSelectedFile(index),
         label: file.name || `รูปใหม่ ${index + 1}`,
         badge: "รูปใหม่",
       };

@@ -32,13 +32,11 @@ def create_excel_image_buffer(image_path):
 
 
 def add_images_to_worksheet(worksheet, row_index, image_paths, start_column_index=1):
-    max_display_width = 220
-    max_display_height = 165
-    gap = 12
-    max_images = min(len(image_paths), 4)
-    current_offset_y = 8
+    max_display_width = 150
+    max_display_height = 120
+    max_image_height = 0
 
-    for image_path in image_paths[:max_images]:
+    for index, image_path in enumerate(image_paths):
         image_entry = create_excel_image_buffer(image_path)
         if not image_entry:
             continue
@@ -54,14 +52,14 @@ def add_images_to_worksheet(worksheet, row_index, image_paths, start_column_inde
         excel_image.height = display_height
         excel_image.anchor = OneCellAnchor(
             _from=AnchorMarker(
-                col=start_column_index,
-                colOff=pixels_to_EMU(8),
+                col=start_column_index + index,
+                colOff=pixels_to_EMU(6),
                 row=row_index - 1,
-                rowOff=pixels_to_EMU(current_offset_y),
+                rowOff=pixels_to_EMU(6),
             ),
             ext=XDRPositiveSize2D(pixels_to_EMU(display_width), pixels_to_EMU(display_height)),
         )
         worksheet.add_image(excel_image)
-        current_offset_y += display_height + gap
+        max_image_height = max(max_image_height, display_height)
 
-    return current_offset_y
+    return max_image_height + 12

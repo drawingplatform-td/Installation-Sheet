@@ -49,7 +49,7 @@ def save_inspection_record(form, files, upload_folder):
     try:
         inspection = None
         if inspection_id:
-            inspection = Inspection.query.get(inspection_id)
+            inspection = db.session.get(Inspection, inspection_id)
             if not inspection:
                 return {"success": False, "message": "ไม่พบรายการที่ต้องการอัปเดต"}, 404
 
@@ -109,7 +109,7 @@ def fetch_inspection_history(machine_filter="", severity_filter="", sort_order="
 
 def delete_inspection_record(inspection_id, upload_folder):
     try:
-        inspection = Inspection.query.get(inspection_id)
+        inspection = db.session.get(Inspection, inspection_id)
         if not inspection:
             return {"success": False, "message": "ไม่พบรายการ"}, 404
 

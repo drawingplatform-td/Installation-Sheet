@@ -69,11 +69,11 @@ table {
 }
 
 .history-col-note {
-  width: 90px;
+  width: 125px;
 }
 
 .history-col-date {
-  width: 110px;
+  width: 95px;
 }
 
 .history-col-actions {
@@ -91,6 +91,13 @@ table {
   overflow-wrap: anywhere;
 }
 
+.history-cell-note {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .history-image-tile {
   padding: 0;
   box-shadow: none;
@@ -99,6 +106,10 @@ table {
 .history-image-tile:hover {
   transform: none;
   box-shadow: none;
+}
+
+.history-show-all-images {
+  min-height: 5rem;
 }
 
 .modal-root {

@@ -185,33 +185,46 @@ export function createHistoryController({
     return filtered;
   }
 
-  function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible, machineName) {
+  function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible, machineName, groupId) {
     if (!urls || urls.length === 0) {
       return '<div class="rounded-xl border border-dashed border-slate-200 p-4 text-xs italic text-slate-300">No images</div>';
     }
 
-    const visibleUrls = urls.slice(0, maxVisible);
-    const itemsHtml = visibleUrls
+    const safeGroupId = escapeHtml(groupId || "history-images");
+    const itemsHtml = urls
       .map((url, index) => {
         const safeUrl = escapeHtml(url);
+        const extraClass = index >= maxVisible ? " history-extra-image hidden" : "";
         const caption = escapeHtml(`${machineName || "Inspection"} - image ${index + 1}`);
         return (
-          `<button type="button" class="${wrapperClass} history-image-trigger" data-preview-src="${safeUrl}" data-preview-caption="${caption}">` +
+          `<button type="button" class="${wrapperClass} history-image-trigger${extraClass}" data-image-group="${safeGroupId}" data-preview-src="${safeUrl}" data-preview-caption="${caption}">` +
           `<img src="${safeUrl}" alt="Inspection image ${index + 1}" class="${imageClass}" loading="lazy">` +
           "</button>"
         );
       })
       .join("");
 
-    const moreBadge =
+    const showAllButton =
       urls.length > maxVisible
-        ? `<div class="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500">+${urls.length - maxVisible}</div>`
+        ? `<button type="button" class="history-show-all-images flex min-h-20 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-2 text-center text-xs font-bold text-blue-700 hover:bg-blue-100" data-image-group="${safeGroupId}">Show all<br>+${urls.length - maxVisible}</button>`
         : "";
 
-    return itemsHtml + moreBadge;
+    return itemsHtml + showAllButton;
   }
 
   function attachImagePreviewActions() {
+    document.querySelectorAll(".history-show-all-images").forEach((button) => {
+      button.addEventListener("click", () => {
+        const groupId = button.getAttribute("data-image-group") || "";
+        document.querySelectorAll(".history-extra-image").forEach((imageButton) => {
+          if (imageButton.getAttribute("data-image-group") === groupId) {
+            imageButton.classList.remove("hidden");
+          }
+        });
+        button.remove();
+      });
+    });
+
     document.querySelectorAll(".history-image-trigger").forEach((button) => {
       button.addEventListener("click", () => {
         openImageModal(
@@ -285,7 +298,7 @@ export function createHistoryController({
       return;
     }
 
-    data.forEach((item) => {
+    data.forEach((item, index) => {
       const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString("th-TH") : "-";
       const machineRaw = String(item.machine || "-");
       const machineText = escapeHtml(machineRaw);
@@ -294,6 +307,7 @@ export function createHistoryController({
       const severityText = item.severity || "";
       const remarkText = escapeHtml(item.remark || "-");
       const itemId = item.id;
+      const imageGroupId = `history-images-${index}`;
 
       const row = document.createElement("tr");
       row.className = "hover:bg-blue-50 transition-colors align-top";
@@ -302,14 +316,14 @@ export function createHistoryController({
         <td class="p-4">
           <div class="w-40">
             <div class="grid grid-cols-2 gap-2">
-              ${buildImageGalleryHtml(imageUrls, "h-20 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300", 4, machineRaw)}
+              ${buildImageGalleryHtml(imageUrls, "h-20 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300", 4, machineRaw, imageGroupId)}
             </div>
             <div class="mt-2 text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? `${imageUrls.length} image(s)` : "No images"}</div>
           </div>
         </td>
         <td class="history-cell-issue p-4 text-slate-600 font-medium">${issueText}</td>
         <td class="p-4">${getSeverityBadge(severityText)}</td>
-        <td class="p-4 text-slate-500 text-xs">${remarkText}</td>
+        <td class="history-cell-note p-4 text-slate-500 text-xs">${remarkText}</td>
         <td class="p-4 text-slate-500 text-xs font-medium">${dateStr}</td>
         <td class="p-4 text-center whitespace-nowrap">
           <div class="flex flex-col items-center justify-center gap-2">
@@ -371,7 +385,7 @@ export function createHistoryController({
             <div class="text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? `${imageUrls.length} image(s)` : "No images"}</div>
           </div>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            ${buildImageGalleryHtml(imageUrls, "h-28 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white", 6, machineRaw)}
+            ${buildImageGalleryHtml(imageUrls, "h-28 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white", 6, machineRaw, `${imageGroupId}-card`)}
           </div>
         </div>
         <div class="mt-3 grid grid-cols-1 gap-3">
