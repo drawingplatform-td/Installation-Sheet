@@ -5,5 +5,8 @@ export function createAppState() {
     removedExistingImages: [],
     machineHistory: [],
     historyData: [],
+    historyFilteredData: [],
+    historyPageSize: 15,
+    historyVisibleCount: 15,
   };
 }

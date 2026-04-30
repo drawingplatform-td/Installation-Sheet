@@ -41,6 +41,31 @@ function clearStatus() {
   elements.formStatus.textContent = "";
 }
 
+function showToast(type, message, duration = 2800) {
+  const styles = {
+    info: "toast-info",
+    success: "toast-success",
+    error: "toast-error",
+    warning: "toast-warning",
+  };
+
+  if (!elements.toastStack) {
+    return;
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast-item ${styles[type] || styles.info}`;
+  toast.textContent = message;
+  elements.toastStack.appendChild(toast);
+
+  window.setTimeout(() => {
+    toast.classList.add("toast-exit");
+    window.setTimeout(() => {
+      toast.remove();
+    }, 220);
+  }, duration);
+}
+
 const imageController = createImageController({
   elements,
   state,
@@ -48,6 +73,7 @@ const imageController = createImageController({
   parseImageLinks,
   showStatus,
   clearStatus,
+  showToast,
   resetSubmitState,
 });
 
@@ -60,6 +86,7 @@ const formController = createFormController({
   imageController,
   showStatus,
   clearStatus,
+  showToast,
   setSubmitBusy,
   resetSubmitState,
   onReloadHistory: () => historyController.loadHistory(),
@@ -74,6 +101,7 @@ historyController = createHistoryController({
   severityRank,
   api,
   showStatus,
+  showToast,
   onEditRecord: (...args) => formController.editMode(...args),
   onSetMachineHistory: (data) => formController.setMachineHistory(data),
 });
@@ -118,6 +146,10 @@ elements.historySortOrder.addEventListener("change", () => {
 
 elements.clearHistoryFiltersBtn.addEventListener("click", () => {
   historyController.resetHistoryFilters();
+});
+
+elements.loadMoreBtn.addEventListener("click", () => {
+  historyController.loadMoreHistory();
 });
 
 elements.btnRefreshHistory.addEventListener("click", () => {

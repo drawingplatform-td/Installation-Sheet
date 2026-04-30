@@ -5,6 +5,7 @@ export function createFormController({
   imageController,
   showStatus,
   clearStatus,
+  showToast,
   setSubmitBusy,
   resetSubmitState,
   onReloadHistory,
@@ -126,7 +127,16 @@ export function createFormController({
   }
 
   function afterSave(message) {
-    showStatus("success", message || (elements.inspectionIdInput.value ? "อัปเดตรายการเรียบร้อยแล้ว" : "บันทึกรายการเรียบร้อยแล้ว"));
+    const isEditMode = Boolean(elements.inspectionIdInput.value);
+    const machineName = String(elements.machineInput.value || "").trim();
+    const fallbackMessage = isEditMode ? "อัปเดตรายการเรียบร้อยแล้ว" : "บันทึกรายการเรียบร้อยแล้ว";
+    const resolvedMessage = message || fallbackMessage;
+
+    showStatus("success", resolvedMessage);
+    showToast(
+      "success",
+      machineName ? `${isEditMode ? "Updated" : "Saved"} "${machineName}" successfully` : resolvedMessage
+    );
     resetForm(true);
     onReloadHistory();
   }
@@ -164,6 +174,7 @@ export function createFormController({
     imageController.updateFileHint();
     imageController.renderSelectedPreview();
     showStatus("warning", "กำลังแก้ไขรายการเดิม คุณสามารถลบรูปเดิมบางรูป หรือเพิ่มรูปใหม่โดยไม่ทับรูปเดิมได้");
+    showToast("info", machine ? `Editing "${machine}"` : "Editing selected record");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 

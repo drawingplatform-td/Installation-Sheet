@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="/tailwind.css">
   <link rel="stylesheet" href="/app.css">
 </head>
-<body class="bg-slate-50 p-2 md:p-6">
-  <div class="max-w-5xl mx-auto space-y-6">
+<body class="p-2 md:p-6">
+  <div class="page-shell mx-auto space-y-6">
     <div class="text-center">
       <h2 class="text-3xl font-extrabold text-slate-800">Machine Inspection</h2>
       <p class="text-slate-500 text-sm">Issue logging and inspection history</p>
@@ -19,7 +19,7 @@
       <input type="hidden" id="existingUrl" name="existingUrl">
       <input type="hidden" id="removedImages" name="removed_images">
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-[minmax(0,1.45fr)_minmax(20rem,1fr)]">
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-1">A: Machine / เครื่องจักร</label>
           <input type="text" id="machine" name="machine" class="w-full border-2 rounded-xl p-3 focus:border-blue-500 outline-none transition" placeholder="Machine name or code / ระบุชื่อหรือรหัสเครื่อง" required>
@@ -29,7 +29,7 @@
           </div>
         </div>
 
-        <div>
+        <div class="md:justify-self-end md:w-full md:max-w-md">
           <label class="block text-sm font-bold text-slate-700 mb-1">B: Issue Images / รูปภาพความผิดปกติ</label>
           <div class="flex flex-col sm:flex-row gap-2">
             <button type="button" id="btnCamera" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 text-sm font-bold transition">
@@ -60,9 +60,9 @@
           </div>
         </div>
 
-        <div>
+        <div class="md:col-span-2">
           <label class="block text-sm font-bold text-slate-700 mb-1">C: Issue / จุดที่ต้องแก้ไข</label>
-          <input type="text" id="issue" name="issue" class="w-full border-2 rounded-xl p-3 focus:border-blue-500 outline-none transition" placeholder="Describe the issue / ระบุปัญหา">
+          <textarea id="issue" name="issue" rows="3" class="w-full resize-y border-2 rounded-xl p-3 focus:border-blue-500 outline-none transition" placeholder="Describe the issue / ระบุปัญหา"></textarea>
           <div class="mt-3">
             <label class="block text-sm font-bold text-slate-700 mb-2">Severity / ระดับความรุนแรง</label>
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -112,12 +112,12 @@
       </div>
     </form>
 
-    <div class="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
-      <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+    <div class="records-card bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+      <div class="records-card-header p-4 border-b bg-slate-50 flex justify-between items-center">
         <h3 class="font-bold text-slate-700">Saved Records</h3>
         <button type="button" id="btnRefreshHistory" class="text-blue-600 text-sm hover:underline">Refresh</button>
       </div>
-      <div class="border-b border-slate-200 bg-white p-4">
+      <div class="records-card-filters border-b border-slate-200 bg-white p-4">
         <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
           <div>
             <label for="historyMachineFilter" class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-400">Machine</label>
@@ -155,23 +155,43 @@
       <div id="historyCards" class="p-3 space-y-3 md:hidden"></div>
 
       <div class="table-container hidden md:block">
-        <table class="w-full text-left border-collapse">
+        <table class="history-table w-full text-left border-collapse">
           <thead>
             <tr class="bg-slate-100 text-xs uppercase text-slate-600 border-b">
-              <th class="p-4 font-bold">Machine</th>
-              <th class="p-4 font-bold">Images</th>
-              <th class="p-4 font-bold">Issue</th>
-              <th class="p-4 font-bold">Severity</th>
-              <th class="p-4 font-bold">Note</th>
-              <th class="p-4 font-bold">Date</th>
-              <th class="p-4 font-bold text-center">Actions</th>
+              <th class="history-col-machine p-4 font-bold">Machine</th>
+              <th class="history-col-images p-4 font-bold">Images</th>
+              <th class="history-col-issue p-4 font-bold">Issue</th>
+              <th class="history-col-severity p-4 font-bold">Severity</th>
+              <th class="history-col-note p-4 font-bold">Note</th>
+              <th class="history-col-date p-4 font-bold">Date</th>
+              <th class="history-col-actions p-4 font-bold text-center">Actions</th>
             </tr>
           </thead>
           <tbody id="historyList" class="text-sm divide-y divide-slate-100"></tbody>
         </table>
       </div>
+
+      <div id="loadMoreWrap" class="hidden border-t border-slate-200 bg-white px-4 py-4">
+        <div class="flex flex-col items-center justify-center gap-3 sm:flex-row sm:justify-between">
+          <div id="loadMoreSummary" class="text-sm text-slate-500"></div>
+          <button type="button" id="loadMoreBtn" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">
+            Load More
+          </button>
+        </div>
+      </div>
     </div>
   </div>
+
+  <div id="imageModal" class="hidden modal-root" aria-hidden="true">
+    <button type="button" id="imageModalBackdrop" class="modal-backdrop" aria-label="Close image preview"></button>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="imageModalCaption">
+      <button type="button" id="imageModalCloseBtn" class="modal-close-btn" aria-label="Close image preview">×</button>
+      <img id="imageModalImage" class="modal-image" alt="Preview">
+      <div id="imageModalCaption" class="modal-caption"></div>
+    </div>
+  </div>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
 
   <script type="module" src="/js/main.js"></script>
 </body>

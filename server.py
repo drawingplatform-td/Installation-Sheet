@@ -14,4 +14,4 @@ if __name__ == "__main__":
     print("   - Local: http://localhost:5000")
     print(f"   - Network: http://{local_ip}:5000")
     print("   - All interfaces: 0.0.0.0:5000")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000)

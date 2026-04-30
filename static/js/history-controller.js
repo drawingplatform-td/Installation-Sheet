@@ -7,9 +7,14 @@ export function createHistoryController({
   severityRank,
   api,
   showStatus,
+  showToast,
   onEditRecord,
   onSetMachineHistory,
 }) {
+  const pageSize = Number(state.historyPageSize) > 0 ? Number(state.historyPageSize) : 8;
+
+  initializeImageModal();
+
   function confirmEditAction(machineName) {
     const label = String(machineName || "").trim();
     return confirm(
@@ -23,8 +28,74 @@ export function createHistoryController({
     return confirm("Are you sure you want to delete this record?");
   }
 
-  function confirmExportAction() {
+  function confirmExportExcelAction() {
     return confirm("คุณแน่ใจหรือว่าต้องการ Export Excel?");
+  }
+
+
+  function initializeImageModal() {
+    if (!elements.imageModal) {
+      return;
+    }
+
+    elements.imageModalBackdrop.addEventListener("click", closeImageModal);
+    elements.imageModalCloseBtn.addEventListener("click", closeImageModal);
+    elements.imageModalImage.addEventListener("error", handleModalImageError);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !elements.imageModal.classList.contains("hidden")) {
+        closeImageModal();
+      }
+    });
+  }
+
+  function normalizeImageSrc(src) {
+    const value = String(src || "").trim();
+    if (!value) {
+      return "";
+    }
+
+    try {
+      return encodeURI(value);
+    } catch (error) {
+      return value;
+    }
+  }
+
+  function handleModalImageError() {
+    const currentSrc = String(elements.imageModalImage.getAttribute("src") || "");
+    const fallbackSrc = currentSrc.replace(/%25/g, "%");
+
+    if (fallbackSrc && fallbackSrc !== currentSrc) {
+      elements.imageModalImage.setAttribute("src", fallbackSrc);
+      return;
+    }
+
+    elements.imageModalCaption.textContent = "Unable to preview this image";
+    showToast("error", "Preview image could not be loaded");
+  }
+
+  function openImageModal(src, caption) {
+    if (!elements.imageModal) {
+      return;
+    }
+
+    elements.imageModalImage.setAttribute("src", normalizeImageSrc(src));
+    elements.imageModalCaption.textContent = caption || "";
+    elements.imageModal.classList.remove("hidden");
+    elements.imageModal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
+
+  function closeImageModal() {
+    if (!elements.imageModal) {
+      return;
+    }
+
+    elements.imageModal.classList.add("hidden");
+    elements.imageModal.setAttribute("aria-hidden", "true");
+    elements.imageModalImage.removeAttribute("src");
+    elements.imageModalCaption.textContent = "";
+    document.body.classList.remove("modal-open");
   }
 
   function updateHistoryMachineFilterOptions(data) {
@@ -85,11 +156,19 @@ export function createHistoryController({
       const rightTime = right && right.timestamp ? new Date(right.timestamp).getTime() : 0;
 
       if (sortOrderValue === "machine-asc") {
-        return leftMachine.localeCompare(rightMachine, "th") || (rightTime - leftTime);
+        return (
+          leftMachine.localeCompare(rightMachine, "th") ||
+          (rightSeverity - leftSeverity) ||
+          (rightTime - leftTime)
+        );
       }
 
       if (sortOrderValue === "machine-desc") {
-        return rightMachine.localeCompare(leftMachine, "th") || (rightTime - leftTime);
+        return (
+          rightMachine.localeCompare(leftMachine, "th") ||
+          (rightSeverity - leftSeverity) ||
+          (rightTime - leftTime)
+        );
       }
 
       if (sortOrderValue === "severity-asc") {
@@ -106,7 +185,7 @@ export function createHistoryController({
     return filtered;
   }
 
-  function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible) {
+  function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible, machineName) {
     if (!urls || urls.length === 0) {
       return '<div class="rounded-xl border border-dashed border-slate-200 p-4 text-xs italic text-slate-300">No images</div>';
     }
@@ -115,10 +194,11 @@ export function createHistoryController({
     const itemsHtml = visibleUrls
       .map((url, index) => {
         const safeUrl = escapeHtml(url);
+        const caption = escapeHtml(`${machineName || "Inspection"} - image ${index + 1}`);
         return (
-          `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="${wrapperClass}">` +
+          `<button type="button" class="${wrapperClass} history-image-trigger" data-preview-src="${safeUrl}" data-preview-caption="${caption}">` +
           `<img src="${safeUrl}" alt="Inspection image ${index + 1}" class="${imageClass}" loading="lazy">` +
-          "</a>"
+          "</button>"
         );
       })
       .join("");
@@ -129,6 +209,17 @@ export function createHistoryController({
         : "";
 
     return itemsHtml + moreBadge;
+  }
+
+  function attachImagePreviewActions() {
+    document.querySelectorAll(".history-image-trigger").forEach((button) => {
+      button.addEventListener("click", () => {
+        openImageModal(
+          button.getAttribute("data-preview-src") || "",
+          button.getAttribute("data-preview-caption") || ""
+        );
+      });
+    });
   }
 
   function attachRowActions() {
@@ -157,17 +248,25 @@ export function createHistoryController({
           return;
         }
 
+        const machineName = String(button.getAttribute("data-machine") || "").trim();
+
         try {
           const result = await api.deleteInspectionRecord(button.getAttribute("data-id"));
           if (result.success) {
             showStatus("success", "Record deleted successfully");
+            showToast(
+              "success",
+              machineName ? `Deleted "${machineName}" successfully` : "Deleted record successfully"
+            );
             await loadHistory();
             return;
           }
 
           showStatus("error", `Unable to delete record: ${result.message}`);
+          showToast("error", `Delete failed: ${result.message}`);
         } catch (error) {
           showStatus("error", `An error occurred: ${error.message}`);
+          showToast("error", `Delete failed: ${error.message}`);
         }
       });
     });
@@ -182,12 +281,14 @@ export function createHistoryController({
         '<tr><td colspan="7" class="p-10 text-center text-slate-400">No saved records found</td></tr>';
       elements.historyCards.innerHTML =
         '<div class="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">No saved records found</div>';
+      updateLoadMoreControls(0, 0);
       return;
     }
 
     data.forEach((item) => {
       const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleString("th-TH") : "-";
-      const machineText = escapeHtml(item.machine || "-");
+      const machineRaw = String(item.machine || "-");
+      const machineText = escapeHtml(machineRaw);
       const imageUrls = parseImageLinks(item.image_links || "");
       const issueText = escapeHtml(item.issue || "-");
       const severityText = item.severity || "";
@@ -197,21 +298,21 @@ export function createHistoryController({
       const row = document.createElement("tr");
       row.className = "hover:bg-blue-50 transition-colors align-top";
       row.innerHTML = `
-        <td class="p-4 font-semibold text-slate-800">${machineText}</td>
+        <td class="history-cell-machine p-4 font-semibold text-slate-800">${machineText}</td>
         <td class="p-4">
           <div class="w-40">
             <div class="grid grid-cols-2 gap-2">
-              ${buildImageGalleryHtml(imageUrls, "h-20 w-full object-cover", "block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300", 4)}
+              ${buildImageGalleryHtml(imageUrls, "h-20 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white hover:border-blue-300", 4, machineRaw)}
             </div>
             <div class="mt-2 text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? `${imageUrls.length} image(s)` : "No images"}</div>
           </div>
         </td>
-        <td class="p-4 text-slate-600 font-medium">${issueText}</td>
+        <td class="history-cell-issue p-4 text-slate-600 font-medium">${issueText}</td>
         <td class="p-4">${getSeverityBadge(severityText)}</td>
         <td class="p-4 text-slate-500 text-xs">${remarkText}</td>
-        <td class="p-4 text-slate-400 text-[10px]">${dateStr}</td>
+        <td class="p-4 text-slate-500 text-xs font-medium">${dateStr}</td>
         <td class="p-4 text-center whitespace-nowrap">
-          <div class="flex items-center justify-center gap-2">
+          <div class="flex flex-col items-center justify-center gap-2">
             <button
               class="bg-amber-100 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold hover:bg-amber-200 transition inline-block edit-btn"
               data-id="${escapeHtml(itemId)}"
@@ -226,6 +327,7 @@ export function createHistoryController({
             <button
               class="bg-rose-100 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold hover:bg-rose-200 transition inline-block history-delete-btn"
               data-id="${escapeHtml(itemId)}"
+              data-machine="${machineText}"
             >
               Delete
             </button>
@@ -257,6 +359,7 @@ export function createHistoryController({
             <button
               class="shrink-0 rounded-xl bg-rose-100 px-3 py-2 text-xs font-bold text-rose-700 history-delete-btn"
               data-id="${escapeHtml(itemId)}"
+              data-machine="${machineText}"
             >
               Delete
             </button>
@@ -268,7 +371,7 @@ export function createHistoryController({
             <div class="text-[11px] font-bold text-slate-400">${imageUrls.length > 0 ? `${imageUrls.length} image(s)` : "No images"}</div>
           </div>
           <div class="mt-2 grid grid-cols-2 gap-2">
-            ${buildImageGalleryHtml(imageUrls, "h-28 w-full object-cover", "block overflow-hidden rounded-xl border border-slate-200 bg-white", 6)}
+            ${buildImageGalleryHtml(imageUrls, "h-28 w-full object-cover", "history-image-tile block overflow-hidden rounded-xl border border-slate-200 bg-white", 6, machineRaw)}
           </div>
         </div>
         <div class="mt-3 grid grid-cols-1 gap-3">
@@ -286,7 +389,7 @@ export function createHistoryController({
           </div>
           <div>
             <div class="text-xs font-bold uppercase tracking-wide text-slate-400">Date</div>
-            <div class="mt-1 text-xs text-slate-500">${dateStr}</div>
+            <div class="mt-1 text-xs font-medium text-slate-600">${dateStr}</div>
           </div>
         </div>
       `;
@@ -294,17 +397,57 @@ export function createHistoryController({
     });
 
     attachRowActions();
+    attachImagePreviewActions();
+    updateLoadMoreControls(data.length, state.historyFilteredData.length);
   }
 
-  function applyHistoryFilters() {
-    renderHistory(getFilteredAndSortedHistory());
+  function updateLoadMoreControls(visibleCount, totalCount) {
+    if (!elements.loadMoreWrap || !elements.loadMoreBtn || !elements.loadMoreSummary) {
+      return;
+    }
+
+    if (!totalCount) {
+      elements.loadMoreWrap.classList.add("hidden");
+      elements.loadMoreSummary.textContent = "";
+      return;
+    }
+
+    elements.loadMoreWrap.classList.remove("hidden");
+    elements.loadMoreSummary.textContent = `Showing ${visibleCount} of ${totalCount} record(s)`;
+
+    if (visibleCount >= totalCount) {
+      elements.loadMoreBtn.classList.add("hidden");
+      return;
+    }
+
+    elements.loadMoreBtn.classList.remove("hidden");
+    elements.loadMoreBtn.textContent = `Load More (${Math.min(pageSize, totalCount - visibleCount)} more)`;
+  }
+
+  function renderVisibleHistory() {
+    const visibleItems = state.historyFilteredData.slice(0, state.historyVisibleCount);
+    renderHistory(visibleItems);
+  }
+
+  function applyHistoryFilters(resetVisibleCount = true) {
+    state.historyFilteredData = getFilteredAndSortedHistory();
+    if (resetVisibleCount) {
+      state.historyVisibleCount = pageSize;
+    }
+
+    renderVisibleHistory();
+  }
+
+  function loadMoreHistory() {
+    state.historyVisibleCount += pageSize;
+    renderVisibleHistory();
   }
 
   function resetHistoryFilters() {
     elements.historyMachineFilter.value = "";
     elements.historySeverityFilter.value = "";
     elements.historySortOrder.value = "latest";
-    applyHistoryFilters();
+    applyHistoryFilters(true);
   }
 
   function renderHistoryLoadError() {
@@ -312,6 +455,7 @@ export function createHistoryController({
       '<tr><td colspan="7" class="p-10 text-center text-slate-400">Unable to load records</td></tr>';
     elements.historyCards.innerHTML =
       '<div class="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">Unable to load records</div>';
+    updateLoadMoreControls(0, 0);
   }
 
   async function loadHistory() {
@@ -319,30 +463,41 @@ export function createHistoryController({
       '<tr><td colspan="7" class="p-10 text-center text-slate-400 italic">Loading records...</td></tr>';
     elements.historyCards.innerHTML =
       '<div class="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-400">Loading records...</div>';
+    updateLoadMoreControls(0, 0);
 
     try {
       const result = await api.fetchHistory();
       if (result.success) {
         state.historyData = [].concat(result.data || []);
+        state.historyVisibleCount = pageSize;
         updateHistoryMachineFilterOptions(state.historyData);
-        applyHistoryFilters();
+        applyHistoryFilters(true);
         onSetMachineHistory(result.data);
         return;
       }
 
       renderHistoryLoadError();
       showStatus("error", `Unable to load records: ${result.message}`);
+      showToast("error", `Unable to load records: ${result.message}`);
     } catch (error) {
       console.error("Error loading history:", error);
       renderHistoryLoadError();
+      showToast("error", `Unable to load records: ${error.message}`);
     }
   }
 
   function exportToExcel() {
-    if (!confirmExportAction()) {
+    if (!confirmExportExcelAction()) {
       return;
     }
 
+    const totalCount = state.historyFilteredData.length;
+    if (totalCount === 0) {
+      showToast("warning", "No records available to export");
+      return;
+    }
+
+    showToast("success", `Export started for ${totalCount} filtered record(s)`);
     window.location.href = api.buildExportUrl({
       machine: elements.historyMachineFilter.value,
       severity: elements.historySeverityFilter.value,
@@ -354,6 +509,7 @@ export function createHistoryController({
     applyHistoryFilters,
     exportToExcel,
     loadHistory,
+    loadMoreHistory,
     resetHistoryFilters,
   };
 }

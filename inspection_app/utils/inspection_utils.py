@@ -84,10 +84,10 @@ def build_inspection_query(
         query = query.filter(normalized_severity == severity_filter)
 
     if sort_order == "machine-asc":
-        return query.order_by(normalized_machine.asc(), timestamp_column.desc())
+        return query.order_by(normalized_machine.asc(), severity_sort.desc(), timestamp_column.desc())
 
     if sort_order == "machine-desc":
-        return query.order_by(normalized_machine.desc(), timestamp_column.desc())
+        return query.order_by(normalized_machine.desc(), severity_sort.desc(), timestamp_column.desc())
 
     if sort_order == "severity-asc":
         return query.order_by(severity_sort.asc(), timestamp_column.desc())
@@ -120,12 +120,15 @@ def filter_and_sort_inspections(inspections, machine_filter="", severity_filter=
         ]
 
     if sort_order == "machine-asc":
-        return sorted(filtered, key=lambda item: ((item.machine or "").lower(), -sort_timestamp(item)))
+        return sorted(
+            filtered,
+            key=lambda item: ((item.machine or "").lower(), -severity_rank(item.severity), -sort_timestamp(item)),
+        )
 
     if sort_order == "machine-desc":
         return sorted(
             filtered,
-            key=lambda item: ((item.machine or "").lower(), sort_timestamp(item)),
+            key=lambda item: ((item.machine or "").lower(), severity_rank(item.severity), sort_timestamp(item)),
             reverse=True,
         )
 
