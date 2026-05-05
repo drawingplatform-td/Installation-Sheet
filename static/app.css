@@ -33,6 +33,135 @@ body {
   background-color: #f8fbfe;
 }
 
+.machine-summary {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 100%);
+}
+
+.machine-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.machine-summary-title {
+  color: #1e293b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.machine-summary-subtitle {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.machine-summary-total {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 0.18rem 0.42rem;
+}
+
+.machine-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.38rem;
+}
+
+@media (min-width: 768px) {
+  .machine-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.machine-summary-card {
+  border: 1px solid #dbe4ee;
+  border-radius: 0.7rem;
+  background: #ffffff;
+  padding: 0.38rem 0.48rem;
+  text-align: left;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.05);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  width: 100%;
+}
+
+.machine-summary-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.machine-summary-card:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.22);
+  outline-offset: 2px;
+}
+
+.machine-summary-machine {
+  color: #0f172a;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.machine-summary-count {
+  margin-top: 0.04rem;
+  color: #64748b;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.machine-summary-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.machine-summary-pill {
+  border-radius: 999px;
+  font-size: 0.57rem;
+  font-weight: 800;
+  padding: 0.14rem 0.3rem;
+}
+
+.machine-summary-high {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.machine-summary-medium {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.machine-summary-low {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.machine-summary-other {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.machine-summary-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 1rem;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 1rem;
+  text-align: center;
+}
+
 body.modal-open {
   overflow: hidden;
 }

@@ -185,6 +185,109 @@ export function createHistoryController({
     return filtered;
   }
 
+  function getSeverityBucket(severity) {
+    const rank = severityRank(severity);
+    if (rank === 3) {
+      return "high";
+    }
+    if (rank === 2) {
+      return "medium";
+    }
+    if (rank === 1) {
+      return "low";
+    }
+    return "other";
+  }
+
+  function buildMachineSeveritySummary(data) {
+    const summaryMap = {};
+
+    [].concat(data || []).forEach((item) => {
+      const machineName = String((item && item.machine) || "-").trim() || "-";
+      const key = machineName.toLowerCase();
+
+      if (!summaryMap[key]) {
+        summaryMap[key] = {
+          machine: machineName,
+          total: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          other: 0,
+        };
+      }
+
+      const entry = summaryMap[key];
+      const severityKey = getSeverityBucket(item && item.severity);
+      entry.total += 1;
+      entry[severityKey] += 1;
+    });
+
+    const summaryItems = Object.keys(summaryMap).map((key) => summaryMap[key]);
+    const sortOrderValue = elements.historySortOrder.value || "latest";
+    summaryItems.sort((left, right) => {
+      const comparison = left.machine.localeCompare(right.machine, "th");
+      return sortOrderValue === "machine-desc" ? -comparison : comparison;
+    });
+
+    return summaryItems;
+  }
+
+  function renderMachineSeveritySummary(data) {
+    if (!elements.machineSeveritySummary) {
+      return;
+    }
+
+    const summaryItems = buildMachineSeveritySummary(data);
+    if (summaryItems.length === 0) {
+      elements.machineSeveritySummary.innerHTML =
+        '<div class="machine-summary-empty">No records to summarize</div>';
+      return;
+    }
+
+    const totalRecords = summaryItems.reduce((sum, item) => sum + item.total, 0);
+    const cardsHtml = summaryItems
+      .map((item) => {
+        const otherHtml =
+          item.other > 0
+            ? `<span class="machine-summary-pill machine-summary-other">Other ${item.other}</span>`
+            : "";
+        const safeMachine = escapeHtml(item.machine);
+
+        return `
+          <button type="button" class="machine-summary-card" data-summary-machine="${safeMachine}">
+            <div class="machine-summary-machine">${safeMachine}</div>
+            <div class="machine-summary-count">Total ${item.total}</div>
+            <div class="machine-summary-pills">
+              <span class="machine-summary-pill machine-summary-high">High ${item.high}</span>
+              <span class="machine-summary-pill machine-summary-medium">Medium ${item.medium}</span>
+              <span class="machine-summary-pill machine-summary-low">Low ${item.low}</span>
+              ${otherHtml}
+            </div>
+          </button>
+        `;
+      })
+      .join("");
+
+    elements.machineSeveritySummary.innerHTML = `
+      <div class="machine-summary-header">
+        <div>
+          <div class="machine-summary-title">Machine Summary</div>
+          <div class="machine-summary-subtitle">Counts by severity from current filters</div>
+        </div>
+        <div class="machine-summary-total">${totalRecords} record(s)</div>
+      </div>
+      <div class="machine-summary-grid">${cardsHtml}</div>
+    `;
+
+    elements.machineSeveritySummary.querySelectorAll(".machine-summary-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        elements.historyMachineFilter.value = card.getAttribute("data-summary-machine") || "";
+        applyHistoryFilters();
+      });
+    });
+  }
+
   function buildImageGalleryHtml(urls, imageClass, wrapperClass, maxVisible, machineName, groupId) {
     if (!urls || urls.length === 0) {
       return '<div class="rounded-xl border border-dashed border-slate-200 p-4 text-xs italic text-slate-300">No images</div>';
@@ -440,6 +543,7 @@ export function createHistoryController({
 
   function renderVisibleHistory() {
     const visibleItems = state.historyFilteredData.slice(0, state.historyVisibleCount);
+    renderMachineSeveritySummary(state.historyFilteredData);
     renderHistory(visibleItems);
   }
 

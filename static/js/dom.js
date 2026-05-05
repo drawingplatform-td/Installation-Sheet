@@ -13,6 +13,7 @@ export function createElements(doc = document) {
     historyMachineFilter: doc.getElementById("historyMachineFilter"),
     historySeverityFilter: doc.getElementById("historySeverityFilter"),
     historySortOrder: doc.getElementById("historySortOrder"),
+    machineSeveritySummary: doc.getElementById("machineSeveritySummary"),
     clearHistoryFiltersBtn: doc.getElementById("clearHistoryFiltersBtn"),
     inspectionIdInput: doc.getElementById("inspection_id"),
     existingUrlInput: doc.getElementById("existingUrl"),
