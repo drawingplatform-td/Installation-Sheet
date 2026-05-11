@@ -11,6 +11,7 @@ from .services.inspection_service import (
     fetch_inspection_history,
     save_inspection_record,
 )
+from .services.project_service import create_project, delete_project, list_projects, rename_project
 
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
@@ -23,6 +24,40 @@ def register_routes(app):
     @app.route("/uploads/<filename>")
     def serve_upload(filename):
         return send_from_directory(app.config["UPLOAD_FOLDER"], secure_filename(filename))
+
+    @app.route("/api/projects", methods=["GET"])
+    def get_projects():
+        try:
+            result, status_code = list_projects()
+            return jsonify(result), status_code
+        except Exception as error:
+            return jsonify({"success": False, "message": str(error)}), 500
+
+    @app.route("/api/projects", methods=["POST"])
+    def add_project():
+        try:
+            payload = request.get_json(silent=True) or {}
+            result, status_code = create_project(payload.get("name", ""))
+            return jsonify(result), status_code
+        except Exception as error:
+            return jsonify({"success": False, "message": str(error)}), 500
+
+    @app.route("/api/projects/<project_id>", methods=["DELETE"])
+    def remove_project(project_id):
+        try:
+            result, status_code = delete_project(project_id)
+            return jsonify(result), status_code
+        except Exception as error:
+            return jsonify({"success": False, "message": str(error)}), 500
+
+    @app.route("/api/projects/<project_id>", methods=["PUT"])
+    def update_project(project_id):
+        try:
+            payload = request.get_json(silent=True) or {}
+            result, status_code = rename_project(project_id, payload.get("name", ""))
+            return jsonify(result), status_code
+        except Exception as error:
+            return jsonify({"success": False, "message": str(error)}), 500
 
     @app.route("/api/save-inspection", methods=["POST"])
     def save_inspection():
@@ -43,6 +78,7 @@ def register_routes(app):
                 machine_filter=request.args.get("machine", ""),
                 severity_filter=request.args.get("severity", ""),
                 sort_order=request.args.get("sort", "latest"),
+                project_id=request.args.get("project_id", ""),
             )
             return jsonify({"success": True, "data": [item.to_dict() for item in inspections]}), 200
         except Exception as error:
@@ -54,6 +90,7 @@ def register_routes(app):
             result, status_code = delete_inspection_record(
                 inspection_id=inspection_id,
                 upload_folder=app.config["UPLOAD_FOLDER"],
+                project_id=request.args.get("project_id", ""),
             )
             return jsonify(result), status_code
         except Exception as error:
@@ -67,6 +104,7 @@ def register_routes(app):
                 severity_filter=request.args.get("severity", ""),
                 sort_order=request.args.get("sort", "latest"),
                 upload_folder=app.config["UPLOAD_FOLDER"],
+                project_id=request.args.get("project_id", ""),
             )
             return send_file(
                 excel_io,

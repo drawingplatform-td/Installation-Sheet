@@ -7,6 +7,7 @@ from inspection_app.services.inspection_service import (
     fetch_inspection_history,
     save_inspection_record,
 )
+from inspection_app.services.project_service import create_project
 from inspection_app.utils.inspection_utils import SEVERITY_RANK_MAP, parse_image_links
 
 
@@ -21,6 +22,23 @@ def test_save_inspection_requires_machine(app, upload_folder):
 
     assert status == 400
     assert result["success"] is False
+
+
+def test_save_inspection_rejects_missing_project(app, upload_folder):
+    with app.app_context():
+        result, status = save_inspection_record(
+            {
+                "project_id": "missing-project-id",
+                "machine": "Pump B",
+                "issue": "Leak",
+            },
+            [],
+            str(upload_folder),
+        )
+
+        assert status == 404
+        assert result["success"] is False
+        assert Inspection.query.count() == 0
 
 
 def test_create_fetch_update_and_delete_inspection_with_images(app, upload_folder, image_file_factory):
@@ -82,3 +100,57 @@ def test_delete_missing_record_returns_404(app, upload_folder):
 
     assert status == 404
     assert result["success"] is False
+
+
+def test_inspection_history_is_scoped_by_project(app, upload_folder):
+    with app.app_context():
+        project_result, _ = create_project("Scoped Project")
+        project_id = project_result["project"]["id"]
+
+        default_result, _ = save_inspection_record(
+            {
+                "machine": "Default Machine",
+                "issue": "Default issue",
+            },
+            [],
+            str(upload_folder),
+        )
+        scoped_result, _ = save_inspection_record(
+            {
+                "project_id": project_id,
+                "machine": "Scoped Machine",
+                "issue": "Scoped issue",
+            },
+            [],
+            str(upload_folder),
+        )
+
+        default_history = fetch_inspection_history()
+        scoped_history = fetch_inspection_history(project_id=project_id)
+
+        assert [item.id for item in default_history] == [default_result["id"]]
+        assert [item.id for item in scoped_history] == [scoped_result["id"]]
+
+
+def test_delete_inspection_rejects_wrong_project(app, upload_folder):
+    with app.app_context():
+        project_result, _ = create_project("Delete Scope Project")
+        project_id = project_result["project"]["id"]
+        other_project_result, _ = create_project("Other Project")
+        other_project_id = other_project_result["project"]["id"]
+
+        save_result, _ = save_inspection_record(
+            {
+                "project_id": project_id,
+                "machine": "Scoped Delete Machine",
+                "issue": "Scoped issue",
+            },
+            [],
+            str(upload_folder),
+        )
+
+        delete_result, delete_status = delete_inspection_record(save_result["id"], str(upload_folder), other_project_id)
+
+        assert delete_status == 404
+        assert delete_result["success"] is False
+        assert db.session.get(Inspection, save_result["id"]) is not None

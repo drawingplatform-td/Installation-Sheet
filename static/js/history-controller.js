@@ -367,7 +367,7 @@ export function createHistoryController({
         const machineName = String(button.getAttribute("data-machine") || "").trim();
 
         try {
-          const result = await api.deleteInspectionRecord(button.getAttribute("data-id"));
+          const result = await api.deleteInspectionRecord(button.getAttribute("data-id"), state.currentProjectId);
           if (result.success) {
             showStatus("success", "Record deleted successfully");
             showToast(
@@ -584,7 +584,7 @@ export function createHistoryController({
     updateLoadMoreControls(0, 0);
 
     try {
-      const result = await api.fetchHistory();
+      const result = await api.fetchHistory(state.currentProjectId);
       if (result.success) {
         state.historyData = [].concat(result.data || []);
         state.historyVisibleCount = pageSize;
@@ -618,6 +618,7 @@ export function createHistoryController({
     showToast("success", `Export started for ${totalCount} filtered record(s)`);
     window.location.href = api.buildExportUrl({
       machine: elements.historyMachineFilter.value,
+      project_id: state.currentProjectId,
       severity: elements.historySeverityFilter.value,
       sort: elements.historySortOrder.value,
     });

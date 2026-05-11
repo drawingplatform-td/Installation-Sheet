@@ -51,12 +51,12 @@ def test_export_without_images_uses_no_image_cell(monkeypatch, tmp_path):
     workbook = load_workbook(workbook_stream)
     worksheet = workbook.active
 
-    assert worksheet.cell(row=1, column=2).value == "Image 1"
+    assert worksheet.cell(row=1, column=2).value == "Images"
     assert worksheet.cell(row=2, column=2).value == "No image"
     assert len(worksheet._images) == 0
 
 
-def test_export_with_six_images_creates_six_image_columns(monkeypatch, tmp_path):
+def test_export_with_six_images_keeps_images_in_one_column(monkeypatch, tmp_path):
     links = create_export_images(tmp_path, 6)
     monkeypatch.setattr(export_service, "fetch_inspection_history", lambda **kwargs: [make_record(image_links=links)])
 
@@ -65,6 +65,6 @@ def test_export_with_six_images_creates_six_image_columns(monkeypatch, tmp_path)
     worksheet = workbook.active
     headers = [worksheet.cell(row=1, column=column).value for column in range(1, worksheet.max_column + 1)]
 
-    assert headers[:7] == ["Machine", "Image 1", "Image 2", "Image 3", "Image 4", "Image 5", "Image 6"]
-    assert headers[7:] == ["Issue", "Severity", "Note", "Date"]
+    assert headers == ["Machine", "Images", "Issue", "Severity", "Note", "Date"]
     assert len(worksheet._images) == 6
+    assert {image.anchor._from.col for image in worksheet._images} == {1}

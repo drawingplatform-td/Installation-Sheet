@@ -2,7 +2,6 @@ from io import BytesIO
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
 
 from database import to_local_time
 
@@ -12,22 +11,21 @@ from ..utils.inspection_utils import parse_image_links, severity_export_text
 from ..utils.workbook_utils import add_images_to_worksheet
 
 
-def export_inspections_to_excel(machine_filter="", severity_filter="", sort_order="latest", upload_folder=""):
+def export_inspections_to_excel(machine_filter="", severity_filter="", sort_order="latest", upload_folder="", project_id=""):
     inspections = fetch_inspection_history(
         machine_filter=machine_filter,
         severity_filter=severity_filter,
         sort_order=sort_order,
+        project_id=project_id,
     )
 
     records = []
-    max_image_count = 0
     for inspection in inspections:
         image_links = parse_image_links(inspection.image_links)
         resolved_paths = [resolve_upload_path(upload_folder, image_path) for image_path in image_links]
         valid_image_paths = [image_path for image_path in resolved_paths if image_path]
         local_timestamp = to_local_time(inspection.timestamp)
 
-        max_image_count = max(max_image_count, len(valid_image_paths))
         records.append(
             {
                 "inspection": inspection,
@@ -40,9 +38,7 @@ def export_inspections_to_excel(machine_filter="", severity_filter="", sort_orde
     worksheet = workbook.active
     worksheet.title = "Inspection History"
 
-    image_column_count = max(1, max_image_count)
-    image_headers = [f"Image {index + 1}" for index in range(image_column_count)]
-    headers = ["Machine"] + image_headers + ["Issue", "Severity", "Note", "Date"]
+    headers = ["Machine", "Images", "Issue", "Severity", "Note", "Date"]
     worksheet.append(headers)
 
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -53,11 +49,6 @@ def export_inspections_to_excel(machine_filter="", severity_filter="", sort_orde
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    issue_column = image_column_count + 2
-    severity_column = image_column_count + 3
-    note_column = image_column_count + 4
-    date_column = image_column_count + 5
-
     current_row = 2
     for record in records:
         inspection = record["inspection"]
@@ -67,7 +58,7 @@ def export_inspections_to_excel(machine_filter="", severity_filter="", sort_orde
         worksheet.append(
             [
                 inspection.machine,
-                *["" for _ in range(image_column_count)],
+                "",
                 inspection.issue or "-",
                 severity_export_text(inspection.severity),
                 inspection.remark or "-",
@@ -75,18 +66,14 @@ def export_inspections_to_excel(machine_filter="", severity_filter="", sort_orde
             ]
         )
 
-        for column_index in [1, issue_column, severity_column, note_column, date_column]:
+        for column_index in [1, 3, 4, 5, 6]:
             worksheet.cell(row=current_row, column=column_index).alignment = Alignment(
-                horizontal="center" if column_index in [severity_column, date_column] else "left",
+                horizontal="center" if column_index in [4, 6] else "left",
                 vertical="center",
                 wrap_text=True,
             )
 
-        for image_column in range(2, image_column_count + 2):
-            worksheet.cell(row=current_row, column=image_column).alignment = Alignment(
-                horizontal="center",
-                vertical="center",
-            )
+        worksheet.cell(row=current_row, column=2).alignment = Alignment(horizontal="center", vertical="center")
 
         if valid_image_paths:
             image_height = add_images_to_worksheet(
@@ -103,12 +90,11 @@ def export_inspections_to_excel(machine_filter="", severity_filter="", sort_orde
         current_row += 1
 
     worksheet.column_dimensions["A"].width = 20
-    for image_column in range(2, image_column_count + 2):
-        worksheet.column_dimensions[get_column_letter(image_column)].width = 22
-    worksheet.column_dimensions[get_column_letter(issue_column)].width = 30
-    worksheet.column_dimensions[get_column_letter(severity_column)].width = 18
-    worksheet.column_dimensions[get_column_letter(note_column)].width = 30
-    worksheet.column_dimensions[get_column_letter(date_column)].width = 20
+    worksheet.column_dimensions["B"].width = 44
+    worksheet.column_dimensions["C"].width = 30
+    worksheet.column_dimensions["D"].width = 18
+    worksheet.column_dimensions["E"].width = 30
+    worksheet.column_dimensions["F"].width = 20
 
     excel_io = BytesIO()
     workbook.save(excel_io)

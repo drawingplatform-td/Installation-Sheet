@@ -179,7 +179,9 @@ export function createFormController({
   }
 
   function resetForm(preserveStatus = false) {
+    const projectId = elements.projectIdInput.value;
     elements.form.reset();
+    elements.projectIdInput.value = projectId;
     imageController.resetForNewForm();
     elements.inspectionIdInput.value = "";
     elements.btnSubmit.innerText = "บันทึกข้อมูล";

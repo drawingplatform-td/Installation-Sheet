@@ -22,7 +22,7 @@
 ### 1. เข้าโฟลเดอร์โปรเจกต์
 
 ```powershell
-cd "C:\Users\nattawat.v\Desktop\machine inspection"
+cd "C:\machine inspection"
 ```
 
 ### 2. สร้าง Virtual Environment

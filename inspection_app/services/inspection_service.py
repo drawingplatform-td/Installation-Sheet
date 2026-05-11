@@ -4,6 +4,7 @@ from database import Inspection, db
 
 from ..utils.image_utils import delete_image_file, save_uploaded_image
 from ..utils.inspection_utils import build_inspection_query, parse_image_links
+from .project_service import resolve_project
 
 
 def _build_uploaded_image_links(files, upload_folder):
@@ -33,6 +34,7 @@ def _delete_files_after_commit(upload_folder, image_links):
 
 
 def save_inspection_record(form, files, upload_folder):
+    project_id = form.get("project_id", "").strip()
     machine = form.get("machine", "").strip()
     issue = form.get("issue", "").strip()
     severity = form.get("severity", "").strip()
@@ -44,6 +46,10 @@ def save_inspection_record(form, files, upload_folder):
     if not machine:
         return {"success": False, "message": "กรุณาระบุชื่อเครื่องจักร"}, 400
 
+    project = resolve_project(project_id)
+    if not project:
+        return {"success": False, "message": "Project not found"}, 404
+
     uploaded_image_links = []
 
     try:
@@ -52,6 +58,9 @@ def save_inspection_record(form, files, upload_folder):
             inspection = db.session.get(Inspection, inspection_id)
             if not inspection:
                 return {"success": False, "message": "ไม่พบรายการที่ต้องการอัปเดต"}, 404
+
+            if inspection.project_id and inspection.project_id != project.id:
+                return {"success": False, "message": "Record does not belong to the selected project"}, 404
 
         uploaded_image_links = _build_uploaded_image_links(files, upload_folder)
 
@@ -76,6 +85,7 @@ def save_inspection_record(form, files, upload_folder):
             message = "อัปเดตข้อมูลสำเร็จ"
         else:
             inspection = Inspection(
+                project_id=project.id,
                 machine=machine,
                 issue=issue,
                 severity=severity or None,
@@ -94,9 +104,13 @@ def save_inspection_record(form, files, upload_folder):
         return {"success": False, "message": str(error)}, 500
 
 
-def fetch_inspection_history(machine_filter="", severity_filter="", sort_order="latest"):
+def fetch_inspection_history(machine_filter="", severity_filter="", sort_order="latest", project_id=""):
+    project = resolve_project(project_id)
+    if not project:
+        return []
+
     query = build_inspection_query(
-        query=Inspection.query,
+        query=Inspection.query.filter(Inspection.project_id == project.id),
         machine_column=Inspection.machine,
         severity_column=Inspection.severity,
         timestamp_column=Inspection.timestamp,
@@ -107,11 +121,14 @@ def fetch_inspection_history(machine_filter="", severity_filter="", sort_order="
     return query.all()
 
 
-def delete_inspection_record(inspection_id, upload_folder):
+def delete_inspection_record(inspection_id, upload_folder, project_id=""):
     try:
         inspection = db.session.get(Inspection, inspection_id)
         if not inspection:
             return {"success": False, "message": "ไม่พบรายการ"}, 404
+
+        if project_id and inspection.project_id != project_id:
+            return {"success": False, "message": "Record does not belong to the selected project"}, 404
 
         image_links = parse_image_links(inspection.image_links)
 

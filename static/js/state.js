@@ -3,6 +3,8 @@ export function createAppState() {
     selectedFiles: [],
     localPreviewUrls: [],
     removedExistingImages: [],
+    projects: [],
+    currentProjectId: "",
     machineHistory: [],
     historyData: [],
     historyFilteredData: [],

@@ -108,6 +108,151 @@ historyController = createHistoryController({
 
 imageController.initialize();
 
+function getCurrentProject() {
+  return state.projects.find((project) => project.id === state.currentProjectId) || null;
+}
+
+function updateProjectTitle() {
+  const currentProject = getCurrentProject();
+  const projectName = currentProject ? currentProject.name : "Project";
+  elements.pageTitle.textContent = `Machine Inspection - ${projectName}`;
+  document.title = `Machine Inspection - ${projectName}`;
+  elements.projectCurrentName.textContent = projectName;
+}
+
+function closeProjectDropdown() {
+  elements.projectDropdownMenu.classList.add("hidden");
+  elements.projectDropdownButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleProjectDropdown() {
+  const isOpen = !elements.projectDropdownMenu.classList.contains("hidden");
+  elements.projectDropdownMenu.classList.toggle("hidden", isOpen);
+  elements.projectDropdownButton.setAttribute("aria-expanded", String(!isOpen));
+}
+
+function renderProjectOptions() {
+  elements.projectOptionsList.innerHTML = "";
+  state.projects.forEach((project) => {
+    const optionButton = document.createElement("button");
+    optionButton.type = "button";
+    optionButton.className = "project-option-btn";
+    optionButton.dataset.projectId = project.id;
+    optionButton.setAttribute("role", "option");
+    optionButton.setAttribute("aria-selected", String(project.id === state.currentProjectId));
+    optionButton.textContent = project.name;
+    optionButton.addEventListener("click", () => {
+      closeProjectDropdown();
+      setCurrentProject(project.id);
+    });
+    elements.projectOptionsList.appendChild(optionButton);
+  });
+}
+
+function setCurrentProject(projectId, reloadHistory = true) {
+  state.currentProjectId = projectId || (state.projects[0] && state.projects[0].id) || "";
+  updateProjectTitle();
+  renderProjectOptions();
+
+  if (reloadHistory) {
+    formController.resetForm();
+    elements.projectIdInput.value = state.currentProjectId;
+    historyController.resetHistoryFilters();
+    historyController.loadHistory();
+    return;
+  }
+
+  elements.projectIdInput.value = state.currentProjectId;
+}
+
+async function loadProjects(preferredProjectId = "") {
+  const result = await api.fetchProjects();
+  if (!result.success) {
+    showToast("error", `Unable to load projects: ${result.message}`);
+    return;
+  }
+
+  state.projects = [].concat(result.data || []);
+  const preferredExists = state.projects.some((project) => project.id === preferredProjectId);
+  const currentExists = state.projects.some((project) => project.id === state.currentProjectId);
+  const defaultExists = state.projects.some((project) => project.id === result.current_project_id);
+  const nextProjectId = preferredExists
+    ? preferredProjectId
+    : currentExists
+      ? state.currentProjectId
+      : defaultExists
+        ? result.current_project_id
+        : (state.projects[0] && state.projects[0].id) || "";
+
+  renderProjectOptions();
+  setCurrentProject(nextProjectId, false);
+}
+
+async function createNewProject() {
+  const projectName = prompt("Project name?");
+  if (!projectName || !projectName.trim()) {
+    return;
+  }
+
+  const result = await api.createProject(projectName.trim());
+  if (!result.success) {
+    showToast("error", `Unable to create project: ${result.message}`);
+    return;
+  }
+
+  showToast("success", `Created project "${result.project.name}"`);
+  await loadProjects(result.project.id);
+  setCurrentProject(result.project.id);
+}
+
+async function renameCurrentProject() {
+  const currentProject = getCurrentProject();
+  if (!currentProject) {
+    return;
+  }
+
+  const projectName = prompt("New project name?", currentProject.name);
+  if (!projectName || !projectName.trim()) {
+    return;
+  }
+
+  const nextProjectName = projectName.trim();
+  if (nextProjectName === currentProject.name) {
+    return;
+  }
+
+  const result = await api.renameProject(currentProject.id, nextProjectName);
+  if (!result.success) {
+    showToast("error", `Unable to rename project: ${result.message}`);
+    return;
+  }
+
+  showToast("success", `Renamed project to "${result.project.name}"`);
+  await loadProjects(result.project.id);
+  setCurrentProject(result.project.id, false);
+}
+
+async function deleteCurrentProject() {
+  const currentProject = getCurrentProject();
+  if (!currentProject) {
+    return;
+  }
+
+  if (!confirm(`Delete project "${currentProject.name}"?`)) {
+    return;
+  }
+
+  const result = await api.deleteProject(currentProject.id);
+  if (!result.success) {
+    showToast("error", `Unable to delete project: ${result.message}`);
+    return;
+  }
+
+  showToast("success", `Deleted project "${currentProject.name}"`);
+  await loadProjects();
+  setCurrentProject(state.currentProjectId);
+}
+
 elements.btnCamera.addEventListener("click", () => {
   elements.cameraInput.click();
 });
@@ -130,6 +275,32 @@ elements.clearSelectedImageBtn.addEventListener("click", () => {
 
 elements.machineInput.addEventListener("input", () => {
   formController.renderMachineHistorySuggestions();
+});
+
+elements.projectDropdownButton.addEventListener("click", () => {
+  toggleProjectDropdown();
+});
+
+document.addEventListener("click", (event) => {
+  const clickedInsideProjectPicker =
+    elements.projectDropdownButton.contains(event.target) || elements.projectDropdownMenu.contains(event.target);
+  if (!clickedInsideProjectPicker) {
+    closeProjectDropdown();
+  }
+});
+
+elements.addProjectBtn.addEventListener("click", () => {
+  createNewProject();
+});
+
+elements.renameProjectBtn.addEventListener("click", () => {
+  closeProjectDropdown();
+  renameCurrentProject();
+});
+
+elements.deleteProjectBtn.addEventListener("click", () => {
+  closeProjectDropdown();
+  deleteCurrentProject();
 });
 
 elements.historyMachineFilter.addEventListener("change", () => {
@@ -169,5 +340,5 @@ elements.form.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("load", () => {
-  historyController.loadHistory();
+  loadProjects().then(() => historyController.loadHistory());
 });

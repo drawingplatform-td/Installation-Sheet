@@ -96,8 +96,42 @@ async function requestJson(url, options = {}) {
   };
 }
 
-export async function fetchHistory() {
-  return requestJson("/api/get-history");
+export async function fetchProjects() {
+  return requestJson("/api/projects");
+}
+
+export async function createProject(name) {
+  return requestJson("/api/projects", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteProject(id) {
+  return requestJson(`/api/projects/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function renameProject(id, name) {
+  return requestJson(`/api/projects/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function fetchHistory(projectId) {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set("project_id", projectId);
+  }
+  return requestJson(`/api/get-history${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
 export async function submitInspection(formData) {
@@ -107,8 +141,12 @@ export async function submitInspection(formData) {
   });
 }
 
-export async function deleteInspectionRecord(id) {
-  return requestJson(`/api/delete/${id}`, {
+export async function deleteInspectionRecord(id, projectId = "") {
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set("project_id", projectId);
+  }
+  return requestJson(`/api/delete/${id}${params.toString() ? `?${params.toString()}` : ""}`, {
     method: "DELETE",
   });
 }
@@ -118,6 +156,10 @@ export function buildExportUrl(filters) {
 
   if (filters.machine) {
     params.set("machine", filters.machine);
+  }
+
+  if (filters.project_id) {
+    params.set("project_id", filters.project_id);
   }
 
   if (filters.severity) {

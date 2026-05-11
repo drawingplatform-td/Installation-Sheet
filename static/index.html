@@ -9,13 +9,34 @@
 </head>
 <body class="p-2 md:p-6">
   <div class="page-shell mx-auto space-y-6">
+    <div class="project-bar">
+      <div class="project-picker">
+        <label id="projectLabel" class="project-label">Project</label>
+        <button type="button" id="projectDropdownButton" class="project-select" aria-haspopup="listbox" aria-expanded="false">
+          <span id="projectCurrentName">Loading...</span>
+          <span class="project-select-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div id="projectDropdownMenu" class="project-dropdown-menu hidden">
+          <div id="projectOptionsList" class="project-options-list" role="listbox" aria-labelledby="projectLabel"></div>
+          <div class="project-dropdown-footer">
+            <button type="button" id="renameProjectBtn" class="project-action-btn project-rename-btn">Rename</button>
+            <button type="button" id="deleteProjectBtn" class="project-action-btn project-delete-btn">Delete</button>
+          </div>
+        </div>
+      </div>
+      <div class="project-actions">
+        <button type="button" id="addProjectBtn" class="project-action-btn project-add-btn">Add</button>
+      </div>
+    </div>
+
     <div class="text-center">
-      <h2 class="text-3xl font-extrabold text-slate-800">Machine Inspection</h2>
+      <h2 id="pageTitle" class="text-3xl font-extrabold text-slate-800">Machine Inspection</h2>
       <p class="text-slate-500 text-sm">Issue logging and inspection history</p>
     </div>
 
     <form id="mainForm" class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 space-y-4">
       <input type="hidden" id="inspection_id" name="inspection_id">
+      <input type="hidden" id="project_id" name="project_id">
       <input type="hidden" id="existingUrl" name="existingUrl">
       <input type="hidden" id="removedImages" name="removed_images">
 
